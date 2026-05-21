@@ -1,0 +1,29 @@
+.raster-container {
+  position: relative;
+  width: 100%;
+  background-image: linear-gradient(#e0f7fa 1px, transparent 1px);
+  background-size: 100% 28px;
+  border: 1px solid var(--background-modifier-border);
+  touch-action: none; /* Prevents mobile scrolling while drawing */
+  padding-top: 40px; /* Space for toolbar */
+}
+
+.raster-toolbar {
+  position: absolute;
+  top: 5px;
+  left: 10px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  z-index: 10;
+}
+
+.raster-toolbar input[type="range"] {
+  width: 80px;
+}
+
+.raster-canvas {
+  display: block;
+  width: 100%;
+  cursor: crosshair;
+}
