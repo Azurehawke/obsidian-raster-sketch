@@ -28,23 +28,23 @@ export default class RasterSketchPlugin extends Plugin {
             const canvas = container.createEl("canvas", { cls: "raster-canvas" });
             const ctx2d = canvas.getContext("2d")!;
             
-            // Fixed initial sizing mapped to Device Pixel Ratio (DPI Awareness)
             const dpr = window.devicePixelRatio || 1;
             const initialHeight = 300;
+            const lineSpacing = 28; // Matches the CSS background size
             
-            // Dynamic window scaling function
+            // Track the maximum vertical point where the user has actually drawn
+            let maxDrawnY = 0;
+
             const resizeCanvas = () => {
                 const rect = canvas.getBoundingClientRect();
                 canvas.width = rect.width * dpr;
                 canvas.height = initialHeight * dpr;
                 ctx2d.scale(dpr, dpr);
                 
-                // Reinitialize drawing state context properties
                 ctx2d.lineCap = "round";
                 ctx2d.lineJoin = "round";
             };
 
-            // Run sizing adjustments
             setTimeout(resizeCanvas, 50);
 
             let drawing = false;
@@ -53,7 +53,6 @@ export default class RasterSketchPlugin extends Plugin {
                 return { x: (e.clientX - r.left), y: (e.clientY - r.top) };
             };
 
-            // Drawing Event Handlers
             canvas.addEventListener("pointerdown", (e) => {
                 drawing = true;
                 ctx2d.beginPath();
@@ -61,6 +60,8 @@ export default class RasterSketchPlugin extends Plugin {
                 ctx2d.lineWidth = parseInt(widthInput.value);
                 const pos = getPos(e);
                 ctx2d.moveTo(pos.x, pos.y);
+                
+                if (pos.y > maxDrawnY) maxDrawnY = pos.y;
             });
 
             canvas.addEventListener("pointermove", (e) => {
@@ -69,24 +70,24 @@ export default class RasterSketchPlugin extends Plugin {
                 ctx2d.lineTo(pos.x, pos.y);
                 ctx2d.stroke();
                 
-                // Dynamic expansion loop if user sketches close to the canvas bottom boundary
+                // Track bounds for cropping later
+                if (pos.y > maxDrawnY) maxDrawnY = pos.y;
+                
+                // Dynamic expansion loop
                 if (pos.y > (canvas.height / dpr) - 20) {
                     const oldWidth = canvas.width;
                     const oldHeight = canvas.height;
                     
-                    // Create a temporary backup image layer of current drawing state
                     const tempCanvas = document.createElement("canvas");
                     tempCanvas.width = oldWidth;
                     tempCanvas.height = oldHeight;
                     tempCanvas.getContext("2d")?.drawImage(canvas, 0, 0);
 
-                    // Resize main canvas taller
                     canvas.height = oldHeight + (100 * dpr);
                     ctx2d.scale(dpr, dpr);
                     ctx2d.lineCap = "round";
                     ctx2d.lineJoin = "round";
                     
-                    // Restore original sketch content coordinates
                     ctx2d.drawImage(tempCanvas, 0, 0, oldWidth / dpr, oldHeight / dpr);
                 }
             });
@@ -94,11 +95,43 @@ export default class RasterSketchPlugin extends Plugin {
             canvas.addEventListener("pointerup", () => drawing = false);
             canvas.addEventListener("pointerleave", () => drawing = false);
             
-            clearBtn.onclick = () => ctx2d.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
+            clearBtn.onclick = () => {
+                ctx2d.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
+                maxDrawnY = 0;
+            };
 
-            // Binary storage file compilation
+            // Save and clean up pipeline
             saveBtn.onclick = async () => {
-                const data = canvas.toDataURL("image/png").split(',')[1];
+                const currentWidth = canvas.width / dpr;
+                const currentHeight = canvas.height / dpr;
+
+                // Determine content height based on your brush strokes, rounded up to the nearest grid line
+                // If you didn't draw anything, default to one grid line high
+                const boundingGridLines = Math.max(1, Math.ceil(maxDrawnY / lineSpacing));
+                const croppedHeight = boundingGridLines * lineSpacing;
+
+                // Create an invisible scratchpad canvas to compile the baked export image
+                const exportCanvas = document.createElement("canvas");
+                exportCanvas.width = currentWidth * dpr;
+                exportCanvas.height = croppedHeight * dpr;
+                const exportCtx = exportCanvas.getContext("2d")!;
+                exportCtx.scale(dpr, dpr);
+
+                // 1. Bake the college-ruled lines into the background matrix
+                exportCtx.strokeStyle = "#e0f7fa";
+                exportCtx.lineWidth = 1;
+                for (let y = lineSpacing; y <= croppedHeight; y += lineSpacing) {
+                    exportCtx.beginPath();
+                    exportCtx.moveTo(0, y);
+                    exportCtx.lineTo(currentWidth, y);
+                    exportCtx.stroke();
+                }
+
+                // 2. Overlay your drawing onto the background
+                exportCtx.drawImage(canvas, 0, 0, currentWidth, currentHeight);
+
+                // Convert compile map to clean binary
+                const data = exportCanvas.toDataURL("image/png").split(',')[1];
                 const activeFile = this.app.workspace.getActiveFile();
                 if (!activeFile) return;
 
@@ -116,6 +149,9 @@ export default class RasterSketchPlugin extends Plugin {
                 if (editor) {
                     editor.replaceRange(`\n![[${fileName}]]\n`, editor.getCursor());
                 }
+
+                // 3. Remove the sketch UI block window from the active view
+                container.remove();
             };
         });
     }

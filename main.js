@@ -45,6 +45,8 @@ var RasterSketchPlugin = class extends import_obsidian.Plugin {
       const ctx2d = canvas.getContext("2d");
       const dpr = window.devicePixelRatio || 1;
       const initialHeight = 300;
+      const lineSpacing = 28;
+      let maxDrawnY = 0;
       const resizeCanvas = () => {
         const rect = canvas.getBoundingClientRect();
         canvas.width = rect.width * dpr;
@@ -66,6 +68,7 @@ var RasterSketchPlugin = class extends import_obsidian.Plugin {
         ctx2d.lineWidth = parseInt(widthInput.value);
         const pos = getPos(e);
         ctx2d.moveTo(pos.x, pos.y);
+        if (pos.y > maxDrawnY) maxDrawnY = pos.y;
       });
       canvas.addEventListener("pointermove", (e) => {
         var _a;
@@ -73,6 +76,7 @@ var RasterSketchPlugin = class extends import_obsidian.Plugin {
         const pos = getPos(e);
         ctx2d.lineTo(pos.x, pos.y);
         ctx2d.stroke();
+        if (pos.y > maxDrawnY) maxDrawnY = pos.y;
         if (pos.y > canvas.height / dpr - 20) {
           const oldWidth = canvas.width;
           const oldHeight = canvas.height;
@@ -89,10 +93,31 @@ var RasterSketchPlugin = class extends import_obsidian.Plugin {
       });
       canvas.addEventListener("pointerup", () => drawing = false);
       canvas.addEventListener("pointerleave", () => drawing = false);
-      clearBtn.onclick = () => ctx2d.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
+      clearBtn.onclick = () => {
+        ctx2d.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
+        maxDrawnY = 0;
+      };
       saveBtn.onclick = async () => {
         var _a, _b;
-        const data = canvas.toDataURL("image/png").split(",")[1];
+        const currentWidth = canvas.width / dpr;
+        const currentHeight = canvas.height / dpr;
+        const boundingGridLines = Math.max(1, Math.ceil(maxDrawnY / lineSpacing));
+        const croppedHeight = boundingGridLines * lineSpacing;
+        const exportCanvas = document.createElement("canvas");
+        exportCanvas.width = currentWidth * dpr;
+        exportCanvas.height = croppedHeight * dpr;
+        const exportCtx = exportCanvas.getContext("2d");
+        exportCtx.scale(dpr, dpr);
+        exportCtx.strokeStyle = "#e0f7fa";
+        exportCtx.lineWidth = 1;
+        for (let y = lineSpacing; y <= croppedHeight; y += lineSpacing) {
+          exportCtx.beginPath();
+          exportCtx.moveTo(0, y);
+          exportCtx.lineTo(currentWidth, y);
+          exportCtx.stroke();
+        }
+        exportCtx.drawImage(canvas, 0, 0, currentWidth, currentHeight);
+        const data = exportCanvas.toDataURL("image/png").split(",")[1];
         const activeFile = this.app.workspace.getActiveFile();
         if (!activeFile) return;
         const folderPath = ((_a = activeFile.parent) == null ? void 0 : _a.path) || "";
@@ -108,6 +133,7 @@ var RasterSketchPlugin = class extends import_obsidian.Plugin {
 ![[${fileName}]]
 `, editor.getCursor());
         }
+        container.remove();
       };
     });
   }
