@@ -1,8 +1,14 @@
 import { Plugin, TFolder, Editor } from 'obsidian';
 
+interface LineStroke {
+    id: number;
+    color: string;
+    width: number;
+    points: { x: number; y: number }[];
+}
+
 export default class RasterSketchPlugin extends Plugin {
     async onload() {
-        // Register the Ctrl+P Command Palette Action
         this.addCommand({
             id: 'insert-raster-sketch-block',
             name: 'Insert Raster Sketch Block',
@@ -11,12 +17,10 @@ export default class RasterSketchPlugin extends Plugin {
             }
         });
 
-        // Register the rendering engine for the code block
         this.registerMarkdownCodeBlockProcessor("raster-sketch", (source, el, ctx) => {
             const container = el.createDiv({ cls: "raster-container" });
             const toolbar = container.createDiv({ cls: "raster-toolbar" });
             
-            // Toolbar UI Controls
             const colorInput = toolbar.createEl("input", { type: "color" });
             colorInput.value = "var(--text-normal)";
             
@@ -30,94 +34,176 @@ export default class RasterSketchPlugin extends Plugin {
             
             const dpr = window.devicePixelRatio || 1;
             const initialHeight = 300;
-            const lineSpacing = 28; // Matches the CSS background size
+            const lineSpacing = 28;
             
-            // Track the maximum vertical point where the user has actually drawn
+            // Central Stroke Vector Storage Core
+            let strokes: LineStroke[] = [];
+            let currentStroke: LineStroke | null = null;
             let maxDrawnY = 0;
+            let isSaving = false;
+
+            const redrawCanvas = () => {
+                ctx2d.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
+                
+                ctx2d.lineCap = "round";
+                ctx2d.lineJoin = "round";
+
+                // Draw all healthy persistent strokes
+                for (const stroke of strokes) {
+                    if (stroke.points.length < 1) continue;
+                    ctx2d.beginPath();
+                    ctx2d.strokeStyle = stroke.color;
+                    ctx2d.lineWidth = stroke.width;
+                    ctx2d.moveTo(stroke.points[0].x, stroke.points[0].y);
+                    
+                    for (let i = 1; i < stroke.points.length; i++) {
+                        ctx2d.lineTo(stroke.points[i].x, stroke.points[i].y);
+                    }
+                    ctx2d.stroke();
+                }
+            };
 
             const resizeCanvas = () => {
                 const rect = canvas.getBoundingClientRect();
                 canvas.width = rect.width * dpr;
                 canvas.height = initialHeight * dpr;
                 ctx2d.scale(dpr, dpr);
-                
-                ctx2d.lineCap = "round";
-                ctx2d.lineJoin = "round";
+                redrawCanvas();
             };
 
             setTimeout(resizeCanvas, 50);
 
             let drawing = false;
+            let erasing = false;
+
             const getPos = (e: PointerEvent) => {
                 const r = canvas.getBoundingClientRect();
                 return { x: (e.clientX - r.left), y: (e.clientY - r.top) };
             };
 
+            // Helper function to calculate distance from an erase point to a line segment
+            const pointToSegDist = (pt: {x:number, y:number}, p1: {x:number, y:number}, p2: {x:number, y:number}) => {
+                const dx = p2.x - p1.x;
+                const dy = p2.y - p1.y;
+                if (dx === 0 && dy === 0) return Math.hypot(pt.x - p1.x, pt.y - p1.y);
+                const t = ((pt.x - p1.x) * dx + (pt.y - p1.y) * dy) / (dx * dx + dy * dy);
+                const clampedT = Math.max(0, Math.min(1, t));
+                return Math.hypot(pt.x - (p1.x + clampedT * dx), pt.y - (p1.y + clampedT * dy));
+            };
+
+            const evaluateEraserCollision = (pos: {x: number, y: number}) => {
+                const eraseRadius = 15; // Target footprint context sensitivity bounds
+                let hitDetected = false;
+
+                strokes = strokes.filter(stroke => {
+                    for (let i = 0; i < stroke.points.length - 1; i++) {
+                        if (pointToSegDist(pos, stroke.points[i], stroke.points[i+1]) < eraseRadius) {
+                            hitDetected = true;
+                            return false; // Erase entire vector stroke on target match
+                        }
+                    }
+                    return true;
+                });
+
+                if (hitDetected) {
+                    // Recalculate max bounding height from remaining strokes
+                    maxDrawnY = 0;
+                    for (const s of strokes) {
+                        for (const p of s.points) {
+                            if (p.y > maxDrawnY) maxDrawnY = p.y;
+                        }
+                    }
+                    redrawCanvas();
+                }
+            };
+
+            // Hardware-Aware Input Routing Engine
             canvas.addEventListener("pointerdown", (e) => {
-                drawing = true;
-                ctx2d.beginPath();
-                ctx2d.strokeStyle = colorInput.value;
-                ctx2d.lineWidth = parseInt(widthInput.value);
+                if (isSaving) return;
                 const pos = getPos(e);
-                ctx2d.moveTo(pos.x, pos.y);
-                
-                if (pos.y > maxDrawnY) maxDrawnY = pos.y;
+
+                // Detect S-Pen button engagement logic (buttons value 32 denotes barrel press)
+                if (e.buttons === 32 || e.button === 5) {
+                    erasing = true;
+                    evaluateEraserCollision(pos);
+                } else {
+                    drawing = true;
+                    currentStroke = {
+                        id: Date.now(),
+                        color: colorInput.value,
+                        width: parseInt(widthInput.value),
+                        points: [pos]
+                    };
+                    strokes.push(currentStroke);
+                    
+                    ctx2d.beginPath();
+                    ctx2d.strokeStyle = currentStroke.color;
+                    ctx2d.lineWidth = currentStroke.width;
+                    ctx2d.moveTo(pos.x, pos.y);
+                    
+                    if (pos.y > maxDrawnY) maxDrawnY = pos.y;
+                }
             });
 
             canvas.addEventListener("pointermove", (e) => {
-                if (!drawing) return;
+                if (isSaving) return;
                 const pos = getPos(e);
+
+                if (erasing || e.buttons === 32) {
+                    evaluateEraserCollision(pos);
+                    return;
+                }
+
+                if (!drawing || !currentStroke) return;
+                
+                currentStroke.points.push(pos);
                 ctx2d.lineTo(pos.x, pos.y);
                 ctx2d.stroke();
                 
-                // Track bounds for cropping later
                 if (pos.y > maxDrawnY) maxDrawnY = pos.y;
                 
-                // Dynamic expansion loop
+                // Infinite bottom expansion frame allocation
                 if (pos.y > (canvas.height / dpr) - 20) {
                     const oldWidth = canvas.width;
                     const oldHeight = canvas.height;
                     
-                    const tempCanvas = document.createElement("canvas");
-                    tempCanvas.width = oldWidth;
-                    tempCanvas.height = oldHeight;
-                    tempCanvas.getContext("2d")?.drawImage(canvas, 0, 0);
-
                     canvas.height = oldHeight + (100 * dpr);
                     ctx2d.scale(dpr, dpr);
-                    ctx2d.lineCap = "round";
-                    ctx2d.lineJoin = "round";
-                    
-                    ctx2d.drawImage(tempCanvas, 0, 0, oldWidth / dpr, oldHeight / dpr);
+                    redrawCanvas();
                 }
             });
 
-            canvas.addEventListener("pointerup", () => drawing = false);
-            canvas.addEventListener("pointerleave", () => drawing = false);
-            
-            clearBtn.onclick = () => {
-                ctx2d.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
-                maxDrawnY = 0;
+            const terminateInput = () => {
+                drawing = false;
+                erasing = false;
+                currentStroke = null;
             };
 
-            // Save and clean up pipeline
-            saveBtn.onclick = async () => {
-                const currentWidth = canvas.width / dpr;
-                const currentHeight = canvas.height / dpr;
+            canvas.addEventListener("pointerup", terminateInput);
+            canvas.addEventListener("pointerleave", terminateInput);
+            
+            clearBtn.onclick = () => {
+                strokes = [];
+                maxDrawnY = 0;
+                redrawCanvas();
+            };
 
-                // Determine content height based on your brush strokes, rounded up to the nearest grid line
-                // If you didn't draw anything, default to one grid line high
+            saveBtn.onclick = async (e) => {
+                e.preventDefault();
+                if (isSaving) return;
+                isSaving = true;
+                terminateInput();
+
+                const currentWidth = canvas.width / dpr;
                 const boundingGridLines = Math.max(1, Math.ceil(maxDrawnY / lineSpacing));
                 const croppedHeight = boundingGridLines * lineSpacing;
 
-                // Create an invisible scratchpad canvas to compile the baked export image
                 const exportCanvas = document.createElement("canvas");
                 exportCanvas.width = currentWidth * dpr;
                 exportCanvas.height = croppedHeight * dpr;
                 const exportCtx = exportCanvas.getContext("2d")!;
                 exportCtx.scale(dpr, dpr);
 
-                // 1. Bake the college-ruled lines into the background matrix
                 exportCtx.strokeStyle = "#e0f7fa";
                 exportCtx.lineWidth = 1;
                 for (let y = lineSpacing; y <= croppedHeight; y += lineSpacing) {
@@ -127,16 +213,21 @@ export default class RasterSketchPlugin extends Plugin {
                     exportCtx.stroke();
                 }
 
-                // 2. Overlay your drawing onto the background
-                exportCtx.drawImage(canvas, 0, 0, currentWidth, currentHeight);
+                exportCtx.drawImage(canvas, 0, 0, currentWidth, canvas.height / dpr);
 
-                // Convert compile map to clean binary
                 const data = exportCanvas.toDataURL("image/png").split(',')[1];
                 const activeFile = this.app.workspace.getActiveFile();
-                if (!activeFile) return;
+                if (!activeFile) {
+                    isSaving = false;
+                    return;
+                }
 
-                const folderPath = activeFile.parent?.path || "";
-                const sketchFolder = folderPath ? `${folderPath}/sketches` : "sketches";
+                let parentPath = activeFile.parent?.path || "";
+                if (parentPath === "/" || parentPath.trim() === "") {
+                    parentPath = "";
+                }
+                
+                const sketchFolder = parentPath ? `${parentPath}/sketches` : "sketches";
                 
                 if (!(this.app.vault.getAbstractFileByPath(sketchFolder) instanceof TFolder)) {
                     await this.app.vault.createFolder(sketchFolder);
@@ -150,8 +241,9 @@ export default class RasterSketchPlugin extends Plugin {
                     editor.replaceRange(`\n![[${fileName}]]\n`, editor.getCursor());
                 }
 
-                // 3. Remove the sketch UI block window from the active view
-                container.remove();
+                setTimeout(() => {
+                    container.remove();
+                }, 50);
             };
         });
     }

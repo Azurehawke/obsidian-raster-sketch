@@ -46,61 +46,131 @@ var RasterSketchPlugin = class extends import_obsidian.Plugin {
       const dpr = window.devicePixelRatio || 1;
       const initialHeight = 300;
       const lineSpacing = 28;
+      let strokes = [];
+      let currentStroke = null;
       let maxDrawnY = 0;
+      let isSaving = false;
+      const redrawCanvas = () => {
+        ctx2d.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
+        ctx2d.lineCap = "round";
+        ctx2d.lineJoin = "round";
+        for (const stroke of strokes) {
+          if (stroke.points.length < 1) continue;
+          ctx2d.beginPath();
+          ctx2d.strokeStyle = stroke.color;
+          ctx2d.lineWidth = stroke.width;
+          ctx2d.moveTo(stroke.points[0].x, stroke.points[0].y);
+          for (let i = 1; i < stroke.points.length; i++) {
+            ctx2d.lineTo(stroke.points[i].x, stroke.points[i].y);
+          }
+          ctx2d.stroke();
+        }
+      };
       const resizeCanvas = () => {
         const rect = canvas.getBoundingClientRect();
         canvas.width = rect.width * dpr;
         canvas.height = initialHeight * dpr;
         ctx2d.scale(dpr, dpr);
-        ctx2d.lineCap = "round";
-        ctx2d.lineJoin = "round";
+        redrawCanvas();
       };
       setTimeout(resizeCanvas, 50);
       let drawing = false;
+      let erasing = false;
       const getPos = (e) => {
         const r = canvas.getBoundingClientRect();
         return { x: e.clientX - r.left, y: e.clientY - r.top };
       };
+      const pointToSegDist = (pt, p1, p2) => {
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
+        if (dx === 0 && dy === 0) return Math.hypot(pt.x - p1.x, pt.y - p1.y);
+        const t = ((pt.x - p1.x) * dx + (pt.y - p1.y) * dy) / (dx * dx + dy * dy);
+        const clampedT = Math.max(0, Math.min(1, t));
+        return Math.hypot(pt.x - (p1.x + clampedT * dx), pt.y - (p1.y + clampedT * dy));
+      };
+      const evaluateEraserCollision = (pos) => {
+        const eraseRadius = 15;
+        let hitDetected = false;
+        strokes = strokes.filter((stroke) => {
+          for (let i = 0; i < stroke.points.length - 1; i++) {
+            if (pointToSegDist(pos, stroke.points[i], stroke.points[i + 1]) < eraseRadius) {
+              hitDetected = true;
+              return false;
+            }
+          }
+          return true;
+        });
+        if (hitDetected) {
+          maxDrawnY = 0;
+          for (const s of strokes) {
+            for (const p of s.points) {
+              if (p.y > maxDrawnY) maxDrawnY = p.y;
+            }
+          }
+          redrawCanvas();
+        }
+      };
       canvas.addEventListener("pointerdown", (e) => {
-        drawing = true;
-        ctx2d.beginPath();
-        ctx2d.strokeStyle = colorInput.value;
-        ctx2d.lineWidth = parseInt(widthInput.value);
+        if (isSaving) return;
         const pos = getPos(e);
-        ctx2d.moveTo(pos.x, pos.y);
-        if (pos.y > maxDrawnY) maxDrawnY = pos.y;
+        if (e.buttons === 32 || e.button === 5) {
+          erasing = true;
+          evaluateEraserCollision(pos);
+        } else {
+          drawing = true;
+          currentStroke = {
+            id: Date.now(),
+            color: colorInput.value,
+            width: parseInt(widthInput.value),
+            points: [pos]
+          };
+          strokes.push(currentStroke);
+          ctx2d.beginPath();
+          ctx2d.strokeStyle = currentStroke.color;
+          ctx2d.lineWidth = currentStroke.width;
+          ctx2d.moveTo(pos.x, pos.y);
+          if (pos.y > maxDrawnY) maxDrawnY = pos.y;
+        }
       });
       canvas.addEventListener("pointermove", (e) => {
-        var _a;
-        if (!drawing) return;
+        if (isSaving) return;
         const pos = getPos(e);
+        if (erasing || e.buttons === 32) {
+          evaluateEraserCollision(pos);
+          return;
+        }
+        if (!drawing || !currentStroke) return;
+        currentStroke.points.push(pos);
         ctx2d.lineTo(pos.x, pos.y);
         ctx2d.stroke();
         if (pos.y > maxDrawnY) maxDrawnY = pos.y;
         if (pos.y > canvas.height / dpr - 20) {
           const oldWidth = canvas.width;
           const oldHeight = canvas.height;
-          const tempCanvas = document.createElement("canvas");
-          tempCanvas.width = oldWidth;
-          tempCanvas.height = oldHeight;
-          (_a = tempCanvas.getContext("2d")) == null ? void 0 : _a.drawImage(canvas, 0, 0);
           canvas.height = oldHeight + 100 * dpr;
           ctx2d.scale(dpr, dpr);
-          ctx2d.lineCap = "round";
-          ctx2d.lineJoin = "round";
-          ctx2d.drawImage(tempCanvas, 0, 0, oldWidth / dpr, oldHeight / dpr);
+          redrawCanvas();
         }
       });
-      canvas.addEventListener("pointerup", () => drawing = false);
-      canvas.addEventListener("pointerleave", () => drawing = false);
-      clearBtn.onclick = () => {
-        ctx2d.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
-        maxDrawnY = 0;
+      const terminateInput = () => {
+        drawing = false;
+        erasing = false;
+        currentStroke = null;
       };
-      saveBtn.onclick = async () => {
+      canvas.addEventListener("pointerup", terminateInput);
+      canvas.addEventListener("pointerleave", terminateInput);
+      clearBtn.onclick = () => {
+        strokes = [];
+        maxDrawnY = 0;
+        redrawCanvas();
+      };
+      saveBtn.onclick = async (e) => {
         var _a, _b;
+        e.preventDefault();
+        if (isSaving) return;
+        isSaving = true;
+        terminateInput();
         const currentWidth = canvas.width / dpr;
-        const currentHeight = canvas.height / dpr;
         const boundingGridLines = Math.max(1, Math.ceil(maxDrawnY / lineSpacing));
         const croppedHeight = boundingGridLines * lineSpacing;
         const exportCanvas = document.createElement("canvas");
@@ -116,12 +186,18 @@ var RasterSketchPlugin = class extends import_obsidian.Plugin {
           exportCtx.lineTo(currentWidth, y);
           exportCtx.stroke();
         }
-        exportCtx.drawImage(canvas, 0, 0, currentWidth, currentHeight);
+        exportCtx.drawImage(canvas, 0, 0, currentWidth, canvas.height / dpr);
         const data = exportCanvas.toDataURL("image/png").split(",")[1];
         const activeFile = this.app.workspace.getActiveFile();
-        if (!activeFile) return;
-        const folderPath = ((_a = activeFile.parent) == null ? void 0 : _a.path) || "";
-        const sketchFolder = folderPath ? `${folderPath}/sketches` : "sketches";
+        if (!activeFile) {
+          isSaving = false;
+          return;
+        }
+        let parentPath = ((_a = activeFile.parent) == null ? void 0 : _a.path) || "";
+        if (parentPath === "/" || parentPath.trim() === "") {
+          parentPath = "";
+        }
+        const sketchFolder = parentPath ? `${parentPath}/sketches` : "sketches";
         if (!(this.app.vault.getAbstractFileByPath(sketchFolder) instanceof import_obsidian.TFolder)) {
           await this.app.vault.createFolder(sketchFolder);
         }
@@ -133,7 +209,9 @@ var RasterSketchPlugin = class extends import_obsidian.Plugin {
 ![[${fileName}]]
 `, editor.getCursor());
         }
-        container.remove();
+        setTimeout(() => {
+          container.remove();
+        }, 50);
       };
     });
   }
