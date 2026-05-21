@@ -1,14 +1,8 @@
-import { Plugin, TFolder, Editor } from 'obsidian';
-
-interface LineStroke {
-    id: number;
-    color: string;
-    width: number;
-    points: { x: number; y: number }[];
-}
+import { Plugin, TFolder, Editor, MarkdownView } from 'obsidian';
 
 export default class RasterSketchPlugin extends Plugin {
     async onload() {
+        // Register the Ctrl+P Command Palette Action
         this.addCommand({
             id: 'insert-raster-sketch-block',
             name: 'Insert Raster Sketch Block',
@@ -17,49 +11,72 @@ export default class RasterSketchPlugin extends Plugin {
             }
         });
 
+        // Register the rendering engine for the code block
         this.registerMarkdownCodeBlockProcessor("raster-sketch", (source, el, ctx) => {
             const container = el.createDiv({ cls: "raster-container" });
+            container.style.position = "relative"; // Anchor for absolute delete button mapping
+
             const toolbar = container.createDiv({ cls: "raster-toolbar" });
             
+            // Toolbar UI Controls
             const colorInput = toolbar.createEl("input", { type: "color" });
             colorInput.value = "var(--text-normal)";
             
             const widthInput = toolbar.createEl("input", { type: "range", attr: { min: "1", max: "20", value: "3" } });
             
+            // Paper Background Selection Node
+            const patternSelect = toolbar.createEl("select");
+            const optLines = patternSelect.createEl("option", { text: "Lines", value: "lines" });
+            const optDots = patternSelect.createEl("option", { text: "Dot Grid", value: "dots" });
+            const optGraph = patternSelect.createEl("option", { text: "Graph Paper", value: "graph" });
+
             const clearBtn = toolbar.createEl("button", { text: "Clear" });
             const saveBtn = toolbar.createEl("button", { text: "Save Sketch" });
+
+            // Self-Destruct / Delete Block Button UI Layer
+            const deleteBlockBtn = container.createEl("button", { text: "✕", cls: "raster-delete-block-btn" });
+            Object.assign(deleteBlockBtn.style, {
+                position: "absolute",
+                top: "5px",
+                right: "5px",
+                backgroundColor: "var(--text-error)",
+                color: "white",
+                border: "none",
+                borderRadius: "4px",
+                cursor: "pointer",
+                zIndex: "10",
+                padding: "2px 8px",
+                fontWeight: "bold"
+            });
 
             const canvas = container.createEl("canvas", { cls: "raster-canvas" });
             const ctx2d = canvas.getContext("2d")!;
             
             const dpr = window.devicePixelRatio || 1;
             const initialHeight = 300;
-            const lineSpacing = 28;
             
-            // Central Stroke Vector Storage Core
-            let strokes: LineStroke[] = [];
-            let currentStroke: LineStroke | null = null;
             let maxDrawnY = 0;
             let isSaving = false;
 
-            const redrawCanvas = () => {
-                ctx2d.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
-                
-                ctx2d.lineCap = "round";
-                ctx2d.lineJoin = "round";
+            // Pattern Sizing Metrics (5 squares/inch assumptions map to roughly 15px boxes at standard dpi)
+            const lineSpacing = 28;
+            const graphSpacing = 16; 
 
-                // Draw all healthy persistent strokes
-                for (const stroke of strokes) {
-                    if (stroke.points.length < 1) continue;
-                    ctx2d.beginPath();
-                    ctx2d.strokeStyle = stroke.color;
-                    ctx2d.lineWidth = stroke.width;
-                    ctx2d.moveTo(stroke.points[0].x, stroke.points[0].y);
-                    
-                    for (let i = 1; i < stroke.points.length; i++) {
-                        ctx2d.lineTo(stroke.points[i].x, stroke.points[i].y);
-                    }
-                    ctx2d.stroke();
+            // Adaptive Visual Grid Renderer Loop
+            const applyCanvasStylePattern = () => {
+                canvas.style.background = "none";
+                canvas.style.backgroundColor = "transparent";
+                
+                const pattern = patternSelect.value;
+                if (pattern === "lines") {
+                    canvas.style.backgroundImage = `linear-gradient(var(--background-modifier-border) 1px, transparent 1px)`;
+                    canvas.style.backgroundSize = `100% ${lineSpacing}px`;
+                } else if (pattern === "dots") {
+                    canvas.style.backgroundImage = `radial-gradient(var(--background-modifier-border) 1.5px, transparent 1.5px)`;
+                    canvas.style.backgroundSize = `${lineSpacing}px ${lineSpacing}px`;
+                } else if (pattern === "graph") {
+                    canvas.style.backgroundImage = `linear-gradient(var(--background-modifier-border) 1px, transparent 1px), linear-gradient(90deg, var(--background-modifier-border) 1px, transparent 1px)`;
+                    canvas.style.backgroundSize = `${graphSpacing}px ${graphSpacing}px`;
                 }
             };
 
@@ -68,135 +85,119 @@ export default class RasterSketchPlugin extends Plugin {
                 canvas.width = rect.width * dpr;
                 canvas.height = initialHeight * dpr;
                 ctx2d.scale(dpr, dpr);
-                redrawCanvas();
+                
+                ctx2d.lineCap = "round";
+                ctx2d.lineJoin = "round";
+                applyCanvasStylePattern();
             };
 
             setTimeout(resizeCanvas, 50);
+            patternSelect.addEventListener("change", applyCanvasStylePattern);
 
             let drawing = false;
-            let erasing = false;
-
             const getPos = (e: PointerEvent) => {
                 const r = canvas.getBoundingClientRect();
                 return { x: (e.clientX - r.left), y: (e.clientY - r.top) };
             };
 
-            // Helper function to calculate distance from an erase point to a line segment
-            const pointToSegDist = (pt: {x:number, y:number}, p1: {x:number, y:number}, p2: {x:number, y:number}) => {
-                const dx = p2.x - p1.x;
-                const dy = p2.y - p1.y;
-                if (dx === 0 && dy === 0) return Math.hypot(pt.x - p1.x, pt.y - p1.y);
-                const t = ((pt.x - p1.x) * dx + (pt.y - p1.y) * dy) / (dx * dx + dy * dy);
-                const clampedT = Math.max(0, Math.min(1, t));
-                return Math.hypot(pt.x - (p1.x + clampedT * dx), pt.y - (p1.y + clampedT * dy));
-            };
-
-            const evaluateEraserCollision = (pos: {x: number, y: number}) => {
-                const eraseRadius = 15; // Target footprint context sensitivity bounds
-                let hitDetected = false;
-
-                strokes = strokes.filter(stroke => {
-                    for (let i = 0; i < stroke.points.length - 1; i++) {
-                        if (pointToSegDist(pos, stroke.points[i], stroke.points[i+1]) < eraseRadius) {
-                            hitDetected = true;
-                            return false; // Erase entire vector stroke on target match
-                        }
-                    }
-                    return true;
-                });
-
-                if (hitDetected) {
-                    // Recalculate max bounding height from remaining strokes
-                    maxDrawnY = 0;
-                    for (const s of strokes) {
-                        for (const p of s.points) {
-                            if (p.y > maxDrawnY) maxDrawnY = p.y;
-                        }
-                    }
-                    redrawCanvas();
-                }
-            };
-
-            // Hardware-Aware Input Routing Engine
+            // High-Fidelity Pointer Tracker Engine
             canvas.addEventListener("pointerdown", (e) => {
                 if (isSaving) return;
+                drawing = true;
+                ctx2d.beginPath();
+                
                 const pos = getPos(e);
+                ctx2d.moveTo(pos.x, pos.y);
 
-                // Detect S-Pen button engagement logic (buttons value 32 denotes barrel press)
-                if (e.buttons === 32 || e.button === 5) {
-                    erasing = true;
-                    evaluateEraserCollision(pos);
+                // Hardware S-Pen Button Match (32) or Mouse Right Click (2) Action Routing
+                if (e.buttons === 32 || e.buttons === 2) {
+                    ctx2d.globalCompositeOperation = "destination-out"; // Pixel Mask Eraser Mode
+                    ctx2d.lineWidth = 20; // Fixed high footprint eraser swath
                 } else {
-                    drawing = true;
-                    currentStroke = {
-                        id: Date.now(),
-                        color: colorInput.value,
-                        width: parseInt(widthInput.value),
-                        points: [pos]
-                    };
-                    strokes.push(currentStroke);
-                    
-                    ctx2d.beginPath();
-                    ctx2d.strokeStyle = currentStroke.color;
-                    ctx2d.lineWidth = currentStroke.width;
-                    ctx2d.moveTo(pos.x, pos.y);
-                    
+                    ctx2d.globalCompositeOperation = "source-over"; // Paint Mode
+                    ctx2d.strokeStyle = colorInput.value;
+                    ctx2d.lineWidth = parseInt(widthInput.value);
                     if (pos.y > maxDrawnY) maxDrawnY = pos.y;
                 }
             });
 
             canvas.addEventListener("pointermove", (e) => {
-                if (isSaving) return;
+                if (!drawing || isSaving) return;
                 const pos = getPos(e);
 
-                if (erasing || e.buttons === 32) {
-                    evaluateEraserCollision(pos);
-                    return;
+                // Live Tracking modifiers for active swipes
+                if (e.buttons === 32 || e.buttons === 2) {
+                    ctx2d.globalCompositeOperation = "destination-out";
+                    ctx2d.lineWidth = 20;
+                } else {
+                    ctx2d.globalCompositeOperation = "source-over";
+                    ctx2d.strokeStyle = colorInput.value;
+                    ctx2d.lineWidth = parseInt(widthInput.value);
+                    if (pos.y > maxDrawnY) maxDrawnY = pos.y;
                 }
 
-                if (!drawing || !currentStroke) return;
-                
-                currentStroke.points.push(pos);
                 ctx2d.lineTo(pos.x, pos.y);
                 ctx2d.stroke();
                 
-                if (pos.y > maxDrawnY) maxDrawnY = pos.y;
-                
-                // Infinite bottom expansion frame allocation
-                if (pos.y > (canvas.height / dpr) - 20) {
+                // Active Bottom Expansion Bounds Checking
+                if (pos.y > (canvas.height / dpr) - 20 && ctx2d.globalCompositeOperation === "source-over") {
                     const oldWidth = canvas.width;
                     const oldHeight = canvas.height;
                     
+                    const tempCanvas = document.createElement("canvas");
+                    tempCanvas.width = oldWidth;
+                    tempCanvas.height = oldHeight;
+                    tempCanvas.getContext("2d")?.drawImage(canvas, 0, 0);
+
                     canvas.height = oldHeight + (100 * dpr);
                     ctx2d.scale(dpr, dpr);
-                    redrawCanvas();
+                    ctx2d.lineCap = "round";
+                    ctx2d.lineJoin = "round";
+                    
+                    ctx2d.drawImage(tempCanvas, 0, 0, oldWidth / dpr, oldHeight / dpr);
                 }
             });
 
-            const terminateInput = () => {
-                drawing = false;
-                erasing = false;
-                currentStroke = null;
-            };
-
-            canvas.addEventListener("pointerup", terminateInput);
-            canvas.addEventListener("pointerleave", terminateInput);
+            const stopDrawing = () => { drawing = false; };
+            canvas.addEventListener("pointerup", stopDrawing);
+            canvas.addEventListener("pointerleave", stopDrawing);
             
             clearBtn.onclick = () => {
-                strokes = [];
+                ctx2d.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
                 maxDrawnY = 0;
-                redrawCanvas();
             };
 
+// Markdown Code Block Eradication Parser
+            deleteBlockBtn.onclick = async (e) => {
+                e.preventDefault();
+                const sectionInfo = ctx.getSectionInfo(el);
+                if (!sectionInfo) return;
+
+                const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+                if (view) {
+                    const editor = view.editor;
+                    // Safely slice out the line range housing the code block sequence
+                    editor.replaceRange("", 
+                        { line: sectionInfo.lineStart, ch: 0 }, 
+                        { line: sectionInfo.lineEnd + 1, ch: 0 }
+                    );
+                }
+            };         
+
+            // Matrix Compilation Engine (Bakes chosen pattern backgrounds into final PNG)
             saveBtn.onclick = async (e) => {
                 e.preventDefault();
                 if (isSaving) return;
                 isSaving = true;
-                terminateInput();
+                drawing = false;
 
                 const currentWidth = canvas.width / dpr;
-                const boundingGridLines = Math.max(1, Math.ceil(maxDrawnY / lineSpacing));
-                const croppedHeight = boundingGridLines * lineSpacing;
+                const pattern = patternSelect.value;
+                
+                // Clean calculation thresholds mapping crop boundaries per setting
+                const trackingSpacing = pattern === "graph" ? graphSpacing : lineSpacing;
+                const boundingGridLines = Math.max(1, Math.ceil(maxDrawnY / trackingSpacing));
+                const croppedHeight = boundingGridLines * trackingSpacing;
 
                 const exportCanvas = document.createElement("canvas");
                 exportCanvas.width = currentWidth * dpr;
@@ -204,15 +205,42 @@ export default class RasterSketchPlugin extends Plugin {
                 const exportCtx = exportCanvas.getContext("2d")!;
                 exportCtx.scale(dpr, dpr);
 
-                exportCtx.strokeStyle = "#e0f7fa";
+                // 1. Compile selected background pattern grid directly onto output layer
+                exportCtx.strokeStyle = "#e0f7fa"; 
                 exportCtx.lineWidth = 1;
-                for (let y = lineSpacing; y <= croppedHeight; y += lineSpacing) {
-                    exportCtx.beginPath();
-                    exportCtx.moveTo(0, y);
-                    exportCtx.lineTo(currentWidth, y);
-                    exportCtx.stroke();
+
+                if (pattern === "lines") {
+                    for (let y = lineSpacing; y <= croppedHeight; y += lineSpacing) {
+                        exportCtx.beginPath();
+                        exportCtx.moveTo(0, y);
+                        exportCtx.lineTo(currentWidth, y);
+                        exportCtx.stroke();
+                    }
+                } else if (pattern === "dots") {
+                    exportCtx.fillStyle = "#b2ebf2";
+                    for (let x = lineSpacing; x < currentWidth; x += lineSpacing) {
+                        for (let y = lineSpacing; y < croppedHeight; y += lineSpacing) {
+                            exportCtx.beginPath();
+                            exportCtx.arc(x, y, 1.5, 0, Math.PI * 2);
+                            exportCtx.fill();
+                        }
+                    }
+                } else if (pattern === "graph") {
+                    for (let x = graphSpacing; x < currentWidth; x += graphSpacing) {
+                        exportCtx.beginPath();
+                        exportCtx.moveTo(x, 0);
+                        exportCtx.lineTo(x, croppedHeight);
+                        exportCtx.stroke();
+                    }
+                    for (let y = graphSpacing; y <= croppedHeight; y += graphSpacing) {
+                        exportCtx.beginPath();
+                        exportCtx.moveTo(0, y);
+                        exportCtx.lineTo(currentWidth, y);
+                        exportCtx.stroke();
+                    }
                 }
 
+                // 2. Composite paint stroke modifications onto the grid layer
                 exportCtx.drawImage(canvas, 0, 0, currentWidth, canvas.height / dpr);
 
                 const data = exportCanvas.toDataURL("image/png").split(',')[1];
@@ -228,7 +256,6 @@ export default class RasterSketchPlugin extends Plugin {
                 }
                 
                 const sketchFolder = parentPath ? `${parentPath}/sketches` : "sketches";
-                
                 if (!(this.app.vault.getAbstractFileByPath(sketchFolder) instanceof TFolder)) {
                     await this.app.vault.createFolder(sketchFolder);
                 }
