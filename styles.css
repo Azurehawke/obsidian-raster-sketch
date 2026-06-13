@@ -1,25 +1,110 @@
 .raster-container {
-  position: relative;
   width: 100%;
-  background-image: linear-gradient(#e0f7fa 1px, transparent 1px);
-  background-size: 100% 28px;
   border: 1px solid var(--background-modifier-border);
-  touch-action: none; /* Prevents mobile scrolling while drawing */
-  padding-top: 40px; /* Space for toolbar */
+  border-radius: 8px;
+  overflow: hidden;
+  touch-action: none;
 }
 
 .raster-toolbar {
-  position: absolute;
-  top: 5px;
-  left: 10px;
   display: flex;
-  gap: 10px;
   align-items: center;
-  z-index: 10;
+  gap: 4px;
+  padding: 0 8px;
+  height: 36px;
+  background: var(--background-secondary);
+  border-bottom: 1px solid var(--background-modifier-border);
+  box-sizing: border-box;
+}
+
+.raster-toolbar input[type="color"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  cursor: pointer;
+  background: none;
+  flex-shrink: 0;
+}
+
+.raster-toolbar input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 2px;
+}
+
+.raster-toolbar input[type="color"]::-webkit-color-swatch {
+  border: none;
+  border-radius: 2px;
 }
 
 .raster-toolbar input[type="range"] {
-  width: 80px;
+  width: 64px;
+  flex-shrink: 0;
+  accent-color: var(--interactive-accent);
+  cursor: pointer;
+}
+
+.raster-width-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  min-width: 14px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.raster-toolbar select {
+  height: 26px;
+  font-size: 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  cursor: pointer;
+  padding: 0 4px;
+  flex-shrink: 0;
+}
+
+.raster-toolbar-sep {
+  width: 1px;
+  height: 18px;
+  background: var(--background-modifier-border);
+  flex-shrink: 0;
+  margin: 0 2px;
+}
+
+.raster-toolbar-spacer {
+  flex: 1;
+}
+
+.raster-toolbar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.raster-toolbar-btn:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.raster-toolbar-btn--danger {
+  color: var(--text-faint);
+}
+
+.raster-toolbar-btn--danger:hover {
+  color: var(--text-error);
+  background: var(--background-modifier-hover);
 }
 
 .raster-canvas {
