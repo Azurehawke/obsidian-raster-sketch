@@ -1,6 +1,7 @@
 import { Plugin, TFolder, Editor, MarkdownView, setIcon } from 'obsidian';
 
 type ToolMode = 'pen' | 'pencil' | 'marker' | 'eraser';
+interface CanvasState { data: ImageData; height: number; maxY: number; }
 
 export default class RasterSketchPlugin extends Plugin {
     async onload() {
@@ -14,39 +15,35 @@ export default class RasterSketchPlugin extends Plugin {
 
         this.registerMarkdownCodeBlockProcessor("raster-sketch", (source, el, ctx) => {
             const container = el.createDiv({ cls: "raster-container" });
-            const toolbar = container.createDiv({ cls: "raster-toolbar" });
+            const toolbar   = container.createDiv({ cls: "raster-toolbar" });
 
-            // ── Tool selector ──────────────────────────────────────────────
-            let activeTool: ToolMode = 'pen';
-
-            const toolBtns = {} as Record<ToolMode, HTMLButtonElement>;
-            const toolDefs: Array<[ToolMode, string]> = [
-                ['pen',    'Pen'],
-                ['pencil', 'Pencil'],
-                ['marker', 'Marker'],
-                ['eraser', 'Eraser'],
-            ];
-
-            const setActiveTool = (tool: ToolMode) => {
-                activeTool = tool;
-                for (const mode of Object.keys(toolBtns) as ToolMode[]) {
-                    toolBtns[mode].classList.toggle("raster-tool-btn--active", mode === tool);
-                }
-            };
-
-            for (const [mode, label] of toolDefs) {
-                const btn = toolbar.createEl("button", {
-                    text: label,
-                    cls: `raster-tool-btn${mode === 'pen' ? ' raster-tool-btn--active' : ''}`,
-                    attr: { title: label }
-                });
-                btn.addEventListener("click", () => setActiveTool(mode));
-                toolBtns[mode] = btn;
-            }
+            // ── Tool dropdown ───────────────────────────────────────────────
+            const toolSelect = toolbar.createEl("select", { attr: { title: "Drawing tool" } });
+            toolSelect.createEl("option", { text: "Pen",    value: "pen" });
+            toolSelect.createEl("option", { text: "Pencil", value: "pencil" });
+            toolSelect.createEl("option", { text: "Marker", value: "marker" });
+            toolSelect.createEl("option", { text: "Eraser", value: "eraser" });
 
             toolbar.createDiv({ cls: "raster-toolbar-sep" });
 
-            // ── Color + size ───────────────────────────────────────────────
+            // ── Undo / Redo ────────────────────────────────────────────────
+            const undoBtn = toolbar.createEl("button", {
+                cls: "raster-toolbar-btn", attr: { title: "Undo (Ctrl+Z)" }
+            });
+            setIcon(undoBtn, "undo-2");
+            undoBtn.createEl("span", { text: "Undo" });
+            undoBtn.disabled = true;
+
+            const redoBtn = toolbar.createEl("button", {
+                cls: "raster-toolbar-btn", attr: { title: "Redo (Ctrl+Y)" }
+            });
+            setIcon(redoBtn, "redo-2");
+            redoBtn.createEl("span", { text: "Redo" });
+            redoBtn.disabled = true;
+
+            toolbar.createDiv({ cls: "raster-toolbar-sep" });
+
+            // ── Color + brush size ─────────────────────────────────────────
             const colorInput = toolbar.createEl("input", { type: "color", attr: { title: "Brush color" } });
             colorInput.value = "#000000";
 
@@ -69,6 +66,15 @@ export default class RasterSketchPlugin extends Plugin {
 
             toolbar.createDiv({ cls: "raster-toolbar-sep" });
 
+            // ── Canvas width ───────────────────────────────────────────────
+            const canvasWidthSlider = toolbar.createEl("input", {
+                type: "range",
+                attr: { min: "25", max: "100", value: "100", step: "5", title: "Canvas width" }
+            });
+            const canvasWidthLabel = toolbar.createEl("span", { cls: "raster-pct-label", text: "100%" });
+
+            toolbar.createDiv({ cls: "raster-toolbar-sep" });
+
             // ── Action buttons ─────────────────────────────────────────────
             const clearBtn = toolbar.createEl("button", { cls: "raster-toolbar-btn", attr: { title: "Clear canvas" } });
             setIcon(clearBtn, "eraser");
@@ -86,32 +92,31 @@ export default class RasterSketchPlugin extends Plugin {
             });
             setIcon(deleteBlockBtn, "trash-2");
 
-            // ── Canvas setup ───────────────────────────────────────────────
+            // ── Canvas ─────────────────────────────────────────────────────
             const canvas = container.createEl("canvas", { cls: "raster-canvas" });
-            const ctx2d = canvas.getContext("2d")!;
+            const ctx2d  = canvas.getContext("2d")!;
 
-            const dpr = window.devicePixelRatio || 1;
+            const dpr           = window.devicePixelRatio || 1;
             const initialHeight = 300;
-            let maxDrawnY = 0;
-            let isSaving = false;
+            let maxDrawnY       = 0;
+            let isSaving        = false;
 
             const lineSpacing  = 28;
             const graphSpacing = 16;
             const engMajor     = 40;
             const engMinor     = 8;
-            const cornellCue   = 30; // % width for cue column
+            const cornellCue   = 30;
 
-            // Powder blue CSS pattern colors
-            const blue      = "rgba(160, 200, 232, 0.55)";
-            const blueDk    = "rgba(100, 155, 200, 0.75)";
+            const blue        = "rgba(160, 200, 232, 0.55)";
+            const blueDk      = "rgba(100, 155, 200, 0.75)";
             const cornellPink = "rgba(255, 150, 170, 0.85)";
 
+            // ── Pattern rendering ──────────────────────────────────────────
             const applyCanvasStylePattern = () => {
                 canvas.style.backgroundImage    = "none";
                 canvas.style.backgroundColor    = "transparent";
                 canvas.style.backgroundSize     = "";
                 canvas.style.backgroundPosition = "";
-
                 const p = patternSelect.value;
                 if (p === "lines") {
                     canvas.style.backgroundImage = `linear-gradient(${blue} 1px, transparent 1px)`;
@@ -152,7 +157,7 @@ export default class RasterSketchPlugin extends Plugin {
             };
 
             const resizeCanvas = () => {
-                const rect = canvas.getBoundingClientRect();
+                const rect    = canvas.getBoundingClientRect();
                 canvas.width  = rect.width * dpr;
                 canvas.height = initialHeight * dpr;
                 ctx2d.scale(dpr, dpr);
@@ -164,6 +169,79 @@ export default class RasterSketchPlugin extends Plugin {
             setTimeout(resizeCanvas, 50);
             patternSelect.addEventListener("change", applyCanvasStylePattern);
 
+            // ── Undo / Redo ────────────────────────────────────────────────
+            const undoStack: CanvasState[] = [];
+            const redoStack: CanvasState[] = [];
+            const MAX_HISTORY = 20;
+
+            const captureState = (): CanvasState => ({
+                data:   ctx2d.getImageData(0, 0, canvas.width, canvas.height),
+                height: canvas.height,
+                maxY:   maxDrawnY,
+            });
+
+            const applyState = (state: CanvasState) => {
+                if (canvas.height !== state.height) {
+                    canvas.height = state.height;
+                    ctx2d.scale(dpr, dpr);
+                    ctx2d.lineCap  = "round";
+                    ctx2d.lineJoin = "round";
+                }
+                ctx2d.putImageData(state.data, 0, 0);
+                maxDrawnY = state.maxY;
+            };
+
+            const syncUndoRedo = () => {
+                undoBtn.disabled = undoStack.length === 0;
+                redoBtn.disabled = redoStack.length === 0;
+            };
+
+            const pushUndo = () => {
+                undoStack.push(captureState());
+                if (undoStack.length > MAX_HISTORY) undoStack.shift();
+                redoStack.length = 0;
+                syncUndoRedo();
+            };
+
+            undoBtn.addEventListener("click", () => {
+                if (!undoStack.length) return;
+                redoStack.push(captureState());
+                applyState(undoStack.pop()!);
+                syncUndoRedo();
+            });
+
+            redoBtn.addEventListener("click", () => {
+                if (!redoStack.length) return;
+                undoStack.push(captureState());
+                applyState(redoStack.pop()!);
+                syncUndoRedo();
+            });
+
+            // ── Canvas width slider ────────────────────────────────────────
+            canvasWidthSlider.addEventListener("input", () => {
+                const pct = parseInt(canvasWidthSlider.value);
+                canvasWidthLabel.textContent = pct + "%";
+
+                const tmp  = document.createElement("canvas");
+                tmp.width  = canvas.width;
+                tmp.height = canvas.height;
+                tmp.getContext("2d")?.drawImage(canvas, 0, 0);
+                const savedW = canvas.width  / dpr;
+                const savedH = canvas.height / dpr;
+
+                container.style.width = pct + "%";
+
+                requestAnimationFrame(() => {
+                    const rect   = canvas.getBoundingClientRect();
+                    canvas.width = rect.width * dpr;
+                    ctx2d.scale(dpr, dpr);
+                    ctx2d.lineCap  = "round";
+                    ctx2d.lineJoin = "round";
+                    ctx2d.drawImage(tmp, 0, 0, savedW, savedH);
+                    applyCanvasStylePattern();
+                });
+            });
+
             // ── Drawing ────────────────────────────────────────────────────
             let drawing = false;
 
@@ -171,6 +249,9 @@ export default class RasterSketchPlugin extends Plugin {
                 const r = canvas.getBoundingClientRect();
                 return { x: e.clientX - r.left, y: e.clientY - r.top };
             };
+
+            const resolvedTool = (e: PointerEvent): ToolMode =>
+                (e.buttons === 32 || e.buttons === 2) ? 'eraser' : toolSelect.value as ToolMode;
 
             const applyTool = (tool: ToolMode) => {
                 const w = parseInt(widthInput.value);
@@ -194,12 +275,10 @@ export default class RasterSketchPlugin extends Plugin {
                 }
             };
 
-            const resolvedTool = (e: PointerEvent): ToolMode =>
-                (e.buttons === 32 || e.buttons === 2) ? 'eraser' : activeTool;
-
             canvas.addEventListener("pointerdown", (e) => {
                 if (isSaving) return;
-                drawing = true;
+                pushUndo();
+                drawing    = true;
                 const tool = resolvedTool(e);
                 const pos  = getPos(e);
                 ctx2d.beginPath();
@@ -217,7 +296,6 @@ export default class RasterSketchPlugin extends Plugin {
                 ctx2d.stroke();
                 if (tool !== 'eraser' && pos.y > maxDrawnY) maxDrawnY = pos.y;
 
-                // Auto-expand canvas downward
                 if (pos.y > (canvas.height / dpr) - 20 && tool !== 'eraser') {
                     const ow = canvas.width, oh = canvas.height;
                     const tmp = document.createElement("canvas");
@@ -232,7 +310,7 @@ export default class RasterSketchPlugin extends Plugin {
             });
 
             const stopDrawing = () => {
-                drawing = false;
+                drawing           = false;
                 ctx2d.globalAlpha = 1.0;
             };
             canvas.addEventListener("pointerup",    stopDrawing);
@@ -240,6 +318,7 @@ export default class RasterSketchPlugin extends Plugin {
 
             // ── Clear ──────────────────────────────────────────────────────
             clearBtn.onclick = () => {
+                pushUndo();
                 ctx2d.globalAlpha              = 1.0;
                 ctx2d.globalCompositeOperation = "source-over";
                 ctx2d.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
@@ -270,11 +349,9 @@ export default class RasterSketchPlugin extends Plugin {
 
                 const cw      = canvas.width / dpr;
                 const pattern = patternSelect.value;
-
                 const trackingSpacing =
                     pattern === "graph"       ? graphSpacing :
                     pattern === "engineering" ? engMajor     : lineSpacing;
-
                 const croppedHeight = Math.max(1, Math.ceil(maxDrawnY / trackingSpacing)) * trackingSpacing;
 
                 const exp    = document.createElement("canvas");
@@ -283,11 +360,10 @@ export default class RasterSketchPlugin extends Plugin {
                 const expCtx = exp.getContext("2d")!;
                 expCtx.scale(dpr, dpr);
 
-                const lc       = "#b8d4e8"; // light powder blue
-                const lcs      = "#88aec8"; // stronger powder blue
-                const cornellPinkExp = "#ffb0c0"; // soft pink for Cornell cue line
-
-                expCtx.lineWidth = 1;
+                const lc             = "#b8d4e8";
+                const lcs            = "#88aec8";
+                const cornellPinkExp = "#ffb0c0";
+                expCtx.lineWidth     = 1;
 
                 if (pattern === "lines") {
                     expCtx.strokeStyle = lc;
@@ -302,24 +378,22 @@ export default class RasterSketchPlugin extends Plugin {
                     }
                 } else if (pattern === "graph") {
                     expCtx.strokeStyle = lc;
-                    for (let x = graphSpacing; x < cw;           x += graphSpacing) {
+                    for (let x = graphSpacing; x < cw; x += graphSpacing) {
                         expCtx.beginPath(); expCtx.moveTo(x, 0); expCtx.lineTo(x, croppedHeight); expCtx.stroke();
                     }
                     for (let y = graphSpacing; y <= croppedHeight; y += graphSpacing) {
                         expCtx.beginPath(); expCtx.moveTo(0, y); expCtx.lineTo(cw, y); expCtx.stroke();
                     }
                 } else if (pattern === "engineering") {
-                    // Minor grid
                     expCtx.strokeStyle = lc;
-                    for (let x = engMinor; x < cw;           x += engMinor) {
+                    for (let x = engMinor; x < cw; x += engMinor) {
                         expCtx.beginPath(); expCtx.moveTo(x, 0); expCtx.lineTo(x, croppedHeight); expCtx.stroke();
                     }
                     for (let y = engMinor; y <= croppedHeight; y += engMinor) {
                         expCtx.beginPath(); expCtx.moveTo(0, y); expCtx.lineTo(cw, y); expCtx.stroke();
                     }
-                    // Major grid
                     expCtx.strokeStyle = lcs;
-                    for (let x = engMajor; x < cw;           x += engMajor) {
+                    for (let x = engMajor; x < cw; x += engMajor) {
                         expCtx.beginPath(); expCtx.moveTo(x, 0); expCtx.lineTo(x, croppedHeight); expCtx.stroke();
                     }
                     for (let y = engMajor; y <= croppedHeight; y += engMajor) {
@@ -335,7 +409,6 @@ export default class RasterSketchPlugin extends Plugin {
                     expCtx.beginPath(); expCtx.moveTo(cueX, 0); expCtx.lineTo(cueX, croppedHeight); expCtx.stroke();
                 }
 
-                // Composite drawing onto background
                 expCtx.drawImage(canvas, 0, 0, cw, canvas.height / dpr);
 
                 const data       = exp.toDataURL("image/png").split(',')[1];

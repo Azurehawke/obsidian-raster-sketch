@@ -21,35 +21,17 @@
 }
 .raster-toolbar::-webkit-scrollbar { display: none; }
 
-/* ── Tool selector buttons (text labels, toggleable) ──────────────────── */
-.raster-tool-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+/* ── Dropdowns (tool + paper) ─────────────────────────────────────────── */
+.raster-toolbar select {
   height: 26px;
-  padding: 0 8px;
-  border: 1px solid transparent;
-  border-radius: 5px;
-  background: transparent;
-  color: var(--text-muted);
   font-size: 12px;
-  cursor: pointer;
-  flex-shrink: 0;
-  white-space: nowrap;
-  transition: background 0.1s, color 0.1s;
-}
-.raster-tool-btn:hover {
-  background: var(--background-modifier-hover);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 5px;
+  background: var(--background-primary);
   color: var(--text-normal);
-}
-.raster-tool-btn--active {
-  background: var(--interactive-accent);
-  color: var(--text-on-accent);
-  border-color: transparent;
-}
-.raster-tool-btn--active:hover {
-  background: var(--interactive-accent-hover);
-  color: var(--text-on-accent);
+  cursor: pointer;
+  padding: 0 4px;
+  flex-shrink: 0;
 }
 
 /* ── Color swatch ─────────────────────────────────────────────────────── */
@@ -68,7 +50,7 @@
 .raster-toolbar input[type="color"]::-webkit-color-swatch-wrapper { padding: 2px; }
 .raster-toolbar input[type="color"]::-webkit-color-swatch { border: none; border-radius: 3px; }
 
-/* ── Width slider ─────────────────────────────────────────────────────── */
+/* ── Sliders (brush size + canvas width) ─────────────────────────────── */
 .raster-toolbar input[type="range"] {
   width: 60px;
   flex-shrink: 0;
@@ -76,24 +58,19 @@
   cursor: pointer;
 }
 
+/* ── Numeric / percentage labels ──────────────────────────────────────── */
 .raster-width-label {
   font-size: 11px;
   color: var(--text-muted);
-  min-width: 16px;
+  min-width: 14px;
   text-align: right;
   flex-shrink: 0;
 }
-
-/* ── Paper style select ───────────────────────────────────────────────── */
-.raster-toolbar select {
-  height: 26px;
-  font-size: 12px;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 5px;
-  background: var(--background-primary);
-  color: var(--text-normal);
-  cursor: pointer;
-  padding: 0 4px;
+.raster-pct-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  min-width: 30px;
+  text-align: right;
   flex-shrink: 0;
 }
 
@@ -128,6 +105,14 @@
 .raster-toolbar-btn:hover {
   background: var(--background-modifier-hover);
   color: var(--text-normal);
+}
+.raster-toolbar-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.raster-toolbar-btn:disabled:hover {
+  background: transparent;
+  color: var(--text-muted);
 }
 .raster-toolbar-btn--danger { color: var(--text-faint); }
 .raster-toolbar-btn--danger:hover {

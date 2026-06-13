@@ -36,29 +36,26 @@ var RasterSketchPlugin = class extends import_obsidian.Plugin {
     this.registerMarkdownCodeBlockProcessor("raster-sketch", (source, el, ctx) => {
       const container = el.createDiv({ cls: "raster-container" });
       const toolbar = container.createDiv({ cls: "raster-toolbar" });
-      let activeTool = "pen";
-      const toolBtns = {};
-      const toolDefs = [
-        ["pen", "Pen"],
-        ["pencil", "Pencil"],
-        ["marker", "Marker"],
-        ["eraser", "Eraser"]
-      ];
-      const setActiveTool = (tool) => {
-        activeTool = tool;
-        for (const mode of Object.keys(toolBtns)) {
-          toolBtns[mode].classList.toggle("raster-tool-btn--active", mode === tool);
-        }
-      };
-      for (const [mode, label] of toolDefs) {
-        const btn = toolbar.createEl("button", {
-          text: label,
-          cls: `raster-tool-btn${mode === "pen" ? " raster-tool-btn--active" : ""}`,
-          attr: { title: label }
-        });
-        btn.addEventListener("click", () => setActiveTool(mode));
-        toolBtns[mode] = btn;
-      }
+      const toolSelect = toolbar.createEl("select", { attr: { title: "Drawing tool" } });
+      toolSelect.createEl("option", { text: "Pen", value: "pen" });
+      toolSelect.createEl("option", { text: "Pencil", value: "pencil" });
+      toolSelect.createEl("option", { text: "Marker", value: "marker" });
+      toolSelect.createEl("option", { text: "Eraser", value: "eraser" });
+      toolbar.createDiv({ cls: "raster-toolbar-sep" });
+      const undoBtn = toolbar.createEl("button", {
+        cls: "raster-toolbar-btn",
+        attr: { title: "Undo (Ctrl+Z)" }
+      });
+      (0, import_obsidian.setIcon)(undoBtn, "undo-2");
+      undoBtn.createEl("span", { text: "Undo" });
+      undoBtn.disabled = true;
+      const redoBtn = toolbar.createEl("button", {
+        cls: "raster-toolbar-btn",
+        attr: { title: "Redo (Ctrl+Y)" }
+      });
+      (0, import_obsidian.setIcon)(redoBtn, "redo-2");
+      redoBtn.createEl("span", { text: "Redo" });
+      redoBtn.disabled = true;
       toolbar.createDiv({ cls: "raster-toolbar-sep" });
       const colorInput = toolbar.createEl("input", { type: "color", attr: { title: "Brush color" } });
       colorInput.value = "#000000";
@@ -77,6 +74,12 @@ var RasterSketchPlugin = class extends import_obsidian.Plugin {
       patternSelect.createEl("option", { text: "Graph", value: "graph" });
       patternSelect.createEl("option", { text: "Engineering", value: "engineering" });
       patternSelect.createEl("option", { text: "Cornell", value: "cornell" });
+      toolbar.createDiv({ cls: "raster-toolbar-sep" });
+      const canvasWidthSlider = toolbar.createEl("input", {
+        type: "range",
+        attr: { min: "25", max: "100", value: "100", step: "5", title: "Canvas width" }
+      });
+      const canvasWidthLabel = toolbar.createEl("span", { cls: "raster-pct-label", text: "100%" });
       toolbar.createDiv({ cls: "raster-toolbar-sep" });
       const clearBtn = toolbar.createEl("button", { cls: "raster-toolbar-btn", attr: { title: "Clear canvas" } });
       (0, import_obsidian.setIcon)(clearBtn, "eraser");
@@ -158,11 +161,73 @@ var RasterSketchPlugin = class extends import_obsidian.Plugin {
       };
       setTimeout(resizeCanvas, 50);
       patternSelect.addEventListener("change", applyCanvasStylePattern);
+      const undoStack = [];
+      const redoStack = [];
+      const MAX_HISTORY = 20;
+      const captureState = () => ({
+        data: ctx2d.getImageData(0, 0, canvas.width, canvas.height),
+        height: canvas.height,
+        maxY: maxDrawnY
+      });
+      const applyState = (state) => {
+        if (canvas.height !== state.height) {
+          canvas.height = state.height;
+          ctx2d.scale(dpr, dpr);
+          ctx2d.lineCap = "round";
+          ctx2d.lineJoin = "round";
+        }
+        ctx2d.putImageData(state.data, 0, 0);
+        maxDrawnY = state.maxY;
+      };
+      const syncUndoRedo = () => {
+        undoBtn.disabled = undoStack.length === 0;
+        redoBtn.disabled = redoStack.length === 0;
+      };
+      const pushUndo = () => {
+        undoStack.push(captureState());
+        if (undoStack.length > MAX_HISTORY) undoStack.shift();
+        redoStack.length = 0;
+        syncUndoRedo();
+      };
+      undoBtn.addEventListener("click", () => {
+        if (!undoStack.length) return;
+        redoStack.push(captureState());
+        applyState(undoStack.pop());
+        syncUndoRedo();
+      });
+      redoBtn.addEventListener("click", () => {
+        if (!redoStack.length) return;
+        undoStack.push(captureState());
+        applyState(redoStack.pop());
+        syncUndoRedo();
+      });
+      canvasWidthSlider.addEventListener("input", () => {
+        var _a;
+        const pct = parseInt(canvasWidthSlider.value);
+        canvasWidthLabel.textContent = pct + "%";
+        const tmp = document.createElement("canvas");
+        tmp.width = canvas.width;
+        tmp.height = canvas.height;
+        (_a = tmp.getContext("2d")) == null ? void 0 : _a.drawImage(canvas, 0, 0);
+        const savedW = canvas.width / dpr;
+        const savedH = canvas.height / dpr;
+        container.style.width = pct + "%";
+        requestAnimationFrame(() => {
+          const rect = canvas.getBoundingClientRect();
+          canvas.width = rect.width * dpr;
+          ctx2d.scale(dpr, dpr);
+          ctx2d.lineCap = "round";
+          ctx2d.lineJoin = "round";
+          ctx2d.drawImage(tmp, 0, 0, savedW, savedH);
+          applyCanvasStylePattern();
+        });
+      });
       let drawing = false;
       const getPos = (e) => {
         const r = canvas.getBoundingClientRect();
         return { x: e.clientX - r.left, y: e.clientY - r.top };
       };
+      const resolvedTool = (e) => e.buttons === 32 || e.buttons === 2 ? "eraser" : toolSelect.value;
       const applyTool = (tool) => {
         const w = parseInt(widthInput.value);
         if (tool === "eraser") {
@@ -184,9 +249,9 @@ var RasterSketchPlugin = class extends import_obsidian.Plugin {
           }
         }
       };
-      const resolvedTool = (e) => e.buttons === 32 || e.buttons === 2 ? "eraser" : activeTool;
       canvas.addEventListener("pointerdown", (e) => {
         if (isSaving) return;
+        pushUndo();
         drawing = true;
         const tool = resolvedTool(e);
         const pos = getPos(e);
@@ -224,6 +289,7 @@ var RasterSketchPlugin = class extends import_obsidian.Plugin {
       canvas.addEventListener("pointerup", stopDrawing);
       canvas.addEventListener("pointerleave", stopDrawing);
       clearBtn.onclick = () => {
+        pushUndo();
         ctx2d.globalAlpha = 1;
         ctx2d.globalCompositeOperation = "source-over";
         ctx2d.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
