@@ -1,6 +1,6 @@
 {
   "name": "obsidian-raster-sketch",
-  "version": "3.0.1",
+  "version": "3.0.2",
   "description": "Raster sketching plugin for Obsidian.",
   "main": "main.js",
   "scripts": {
