@@ -130,13 +130,14 @@ var RasterSketchPlugin = class extends import_obsidian.Plugin {
       const saveBtn = toolbar.createEl("button", { cls: "raster-toolbar-btn", attr: { title: "Save as image" } });
       (0, import_obsidian.setIcon)(saveBtn, "image-down");
       saveBtn.createEl("span", { text: "Save" });
-      toolbar.createDiv({ cls: "raster-toolbar-spacer" });
-      const deleteBlockBtn = toolbar.createEl("button", {
+      const canvas = container.createEl("canvas", { cls: "raster-canvas" });
+      const canvasActions = container.createDiv({ cls: "raster-canvas-actions" });
+      const deleteBlockBtn = canvasActions.createEl("button", {
         cls: "raster-toolbar-btn raster-toolbar-btn--danger",
         attr: { title: "Remove sketch block" }
       });
       (0, import_obsidian.setIcon)(deleteBlockBtn, "trash-2");
-      const canvas = container.createEl("canvas", { cls: "raster-canvas" });
+      deleteBlockBtn.createEl("span", { text: "Delete" });
       const ctx2d = canvas.getContext("2d");
       const dpr = window.devicePixelRatio || 1;
       const initialHeight = 300;

@@ -1,4 +1,5 @@
 .raster-container {
+  position: relative;
   width: 100%;
   border: 1px solid var(--background-modifier-border);
   border-radius: 8px;
@@ -125,4 +126,20 @@
   display: block;
   width: 100%;
   cursor: crosshair;
+}
+
+/* ── Canvas overlay (delete button, bottom-right) ─────────────────────── */
+.raster-canvas-actions {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  pointer-events: none;
+}
+.raster-container:hover .raster-canvas-actions {
+  opacity: 1;
+  pointer-events: auto;
 }

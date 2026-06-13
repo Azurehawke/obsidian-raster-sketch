@@ -134,16 +134,17 @@ export default class RasterSketchPlugin extends Plugin {
             setIcon(saveBtn, "image-down");
             saveBtn.createEl("span", { text: "Save" });
 
-            toolbar.createDiv({ cls: "raster-toolbar-spacer" });
+            // ── Canvas ─────────────────────────────────────────────────────
+            const canvas = container.createEl("canvas", { cls: "raster-canvas" });
 
-            const deleteBlockBtn = toolbar.createEl("button", {
+            // ── Delete overlay (bottom-right of canvas) ────────────────────
+            const canvasActions  = container.createDiv({ cls: "raster-canvas-actions" });
+            const deleteBlockBtn = canvasActions.createEl("button", {
                 cls: "raster-toolbar-btn raster-toolbar-btn--danger",
                 attr: { title: "Remove sketch block" }
             });
             setIcon(deleteBlockBtn, "trash-2");
-
-            // ── Canvas ─────────────────────────────────────────────────────
-            const canvas = container.createEl("canvas", { cls: "raster-canvas" });
+            deleteBlockBtn.createEl("span", { text: "Delete" });
             const ctx2d  = canvas.getContext("2d")!;
 
             const dpr           = window.devicePixelRatio || 1;
