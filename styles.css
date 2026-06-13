@@ -21,20 +21,21 @@
 }
 .raster-toolbar::-webkit-scrollbar { display: none; }
 
-/* ── Tool selector buttons (icon-only, toggleable) ────────────────────── */
+/* ── Tool selector buttons (text labels, toggleable) ──────────────────── */
 .raster-tool-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
+  height: 26px;
+  padding: 0 8px;
   border: 1px solid transparent;
   border-radius: 5px;
   background: transparent;
   color: var(--text-muted);
+  font-size: 12px;
   cursor: pointer;
   flex-shrink: 0;
+  white-space: nowrap;
   transition: background 0.1s, color 0.1s;
 }
 .raster-tool-btn:hover {

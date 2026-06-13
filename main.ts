@@ -19,25 +19,29 @@ export default class RasterSketchPlugin extends Plugin {
             // ── Tool selector ──────────────────────────────────────────────
             let activeTool: ToolMode = 'pen';
 
-            const toolBtns = {
-                pen:    toolbar.createEl("button", { cls: "raster-tool-btn raster-tool-btn--active", attr: { title: "Pen" } }),
-                pencil: toolbar.createEl("button", { cls: "raster-tool-btn", attr: { title: "Pencil" } }),
-                marker: toolbar.createEl("button", { cls: "raster-tool-btn", attr: { title: "Marker" } }),
-                eraser: toolbar.createEl("button", { cls: "raster-tool-btn", attr: { title: "Eraser" } }),
-            };
-            setIcon(toolBtns.pen,    "pen-line");
-            setIcon(toolBtns.pencil, "pencil");
-            setIcon(toolBtns.marker, "highlighter");
-            setIcon(toolBtns.eraser, "eraser");
+            const toolBtns = {} as Record<ToolMode, HTMLButtonElement>;
+            const toolDefs: Array<[ToolMode, string]> = [
+                ['pen',    'Pen'],
+                ['pencil', 'Pencil'],
+                ['marker', 'Marker'],
+                ['eraser', 'Eraser'],
+            ];
 
             const setActiveTool = (tool: ToolMode) => {
                 activeTool = tool;
-                for (const [t, btn] of Object.entries(toolBtns)) {
-                    btn.classList.toggle("raster-tool-btn--active", t === tool);
+                for (const mode of Object.keys(toolBtns) as ToolMode[]) {
+                    toolBtns[mode].classList.toggle("raster-tool-btn--active", mode === tool);
                 }
             };
-            for (const [tool, btn] of Object.entries(toolBtns) as [ToolMode, HTMLButtonElement][]) {
-                btn.addEventListener("click", () => setActiveTool(tool as ToolMode));
+
+            for (const [mode, label] of toolDefs) {
+                const btn = toolbar.createEl("button", {
+                    text: label,
+                    cls: `raster-tool-btn${mode === 'pen' ? ' raster-tool-btn--active' : ''}`,
+                    attr: { title: label }
+                });
+                btn.addEventListener("click", () => setActiveTool(mode));
+                toolBtns[mode] = btn;
             }
 
             toolbar.createDiv({ cls: "raster-toolbar-sep" });
@@ -93,13 +97,14 @@ export default class RasterSketchPlugin extends Plugin {
 
             const lineSpacing  = 28;
             const graphSpacing = 16;
-            const engMajor     = 20;
-            const engMinor     = 4;
+            const engMajor     = 40;
+            const engMinor     = 8;
             const cornellCue   = 30; // % width for cue column
 
             // Powder blue CSS pattern colors
-            const blue   = "rgba(160, 200, 232, 0.55)";
-            const blueDk = "rgba(100, 155, 200, 0.75)";
+            const blue      = "rgba(160, 200, 232, 0.55)";
+            const blueDk    = "rgba(100, 155, 200, 0.75)";
+            const cornellPink = "rgba(255, 150, 170, 0.85)";
 
             const applyCanvasStylePattern = () => {
                 canvas.style.backgroundImage    = "none";
@@ -138,8 +143,8 @@ export default class RasterSketchPlugin extends Plugin {
                         `linear-gradient(${blue} 1px, transparent 1px)`,
                         `linear-gradient(90deg,
                             transparent calc(${cornellCue}% - 0.5px),
-                            ${blueDk} calc(${cornellCue}% - 0.5px),
-                            ${blueDk} calc(${cornellCue}% + 0.5px),
+                            ${cornellPink} calc(${cornellCue}% - 0.5px),
+                            ${cornellPink} calc(${cornellCue}% + 0.5px),
                             transparent calc(${cornellCue}% + 0.5px))`
                     ].join(", ");
                     canvas.style.backgroundSize = `100% ${lineSpacing}px, 100% 100%`;
@@ -278,8 +283,9 @@ export default class RasterSketchPlugin extends Plugin {
                 const expCtx = exp.getContext("2d")!;
                 expCtx.scale(dpr, dpr);
 
-                const lc  = "#b8d4e8"; // light powder blue
-                const lcs = "#88aec8"; // stronger powder blue
+                const lc       = "#b8d4e8"; // light powder blue
+                const lcs      = "#88aec8"; // stronger powder blue
+                const cornellPinkExp = "#ffb0c0"; // soft pink for Cornell cue line
 
                 expCtx.lineWidth = 1;
 
@@ -324,7 +330,7 @@ export default class RasterSketchPlugin extends Plugin {
                     for (let y = lineSpacing; y <= croppedHeight; y += lineSpacing) {
                         expCtx.beginPath(); expCtx.moveTo(0, y); expCtx.lineTo(cw, y); expCtx.stroke();
                     }
-                    expCtx.strokeStyle = lcs;
+                    expCtx.strokeStyle = cornellPinkExp;
                     const cueX = cw * (cornellCue / 100);
                     expCtx.beginPath(); expCtx.moveTo(cueX, 0); expCtx.lineTo(cueX, croppedHeight); expCtx.stroke();
                 }
