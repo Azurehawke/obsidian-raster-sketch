@@ -35,31 +35,34 @@ var RasterSketchPlugin = class extends import_obsidian.Plugin {
     });
     this.registerMarkdownCodeBlockProcessor("raster-sketch", (source, el, ctx) => {
       const container = el.createDiv({ cls: "raster-container" });
-      container.style.position = "relative";
       const toolbar = container.createDiv({ cls: "raster-toolbar" });
-      const colorInput = toolbar.createEl("input", { type: "color" });
-      colorInput.value = "var(--text-normal)";
-      const widthInput = toolbar.createEl("input", { type: "range", attr: { min: "1", max: "20", value: "3" } });
-      const patternSelect = toolbar.createEl("select");
-      const optLines = patternSelect.createEl("option", { text: "Lines", value: "lines" });
-      const optDots = patternSelect.createEl("option", { text: "Dot Grid", value: "dots" });
-      const optGraph = patternSelect.createEl("option", { text: "Graph Paper", value: "graph" });
-      const clearBtn = toolbar.createEl("button", { text: "Clear" });
-      const saveBtn = toolbar.createEl("button", { text: "Save Sketch" });
-      const deleteBlockBtn = container.createEl("button", { text: "\u2715", cls: "raster-delete-block-btn" });
-      Object.assign(deleteBlockBtn.style, {
-        position: "absolute",
-        top: "5px",
-        right: "5px",
-        backgroundColor: "var(--text-error)",
-        color: "white",
-        border: "none",
-        borderRadius: "4px",
-        cursor: "pointer",
-        zIndex: "10",
-        padding: "2px 8px",
-        fontWeight: "bold"
+      const colorInput = toolbar.createEl("input", { type: "color", attr: { title: "Brush color" } });
+      colorInput.value = "#000000";
+      toolbar.createDiv({ cls: "raster-toolbar-sep" });
+      const widthInput = toolbar.createEl("input", {
+        type: "range",
+        attr: { min: "1", max: "20", value: "3", title: "Brush size" }
       });
+      const widthLabel = toolbar.createEl("span", { cls: "raster-width-label", text: "3" });
+      widthInput.addEventListener("input", () => {
+        widthLabel.textContent = widthInput.value;
+      });
+      toolbar.createDiv({ cls: "raster-toolbar-sep" });
+      const patternSelect = toolbar.createEl("select", { attr: { title: "Paper style" } });
+      patternSelect.createEl("option", { text: "Lines", value: "lines" });
+      patternSelect.createEl("option", { text: "Dots", value: "dots" });
+      patternSelect.createEl("option", { text: "Graph", value: "graph" });
+      toolbar.createDiv({ cls: "raster-toolbar-sep" });
+      const clearBtn = toolbar.createEl("button", { cls: "raster-toolbar-btn", attr: { title: "Clear canvas" } });
+      (0, import_obsidian.setIcon)(clearBtn, "eraser");
+      const saveBtn = toolbar.createEl("button", { cls: "raster-toolbar-btn", attr: { title: "Save as image" } });
+      (0, import_obsidian.setIcon)(saveBtn, "image-down");
+      toolbar.createDiv({ cls: "raster-toolbar-spacer" });
+      const deleteBlockBtn = toolbar.createEl("button", {
+        cls: "raster-toolbar-btn raster-toolbar-btn--danger",
+        attr: { title: "Remove sketch block" }
+      });
+      (0, import_obsidian.setIcon)(deleteBlockBtn, "trash-2");
       const canvas = container.createEl("canvas", { cls: "raster-canvas" });
       const ctx2d = canvas.getContext("2d");
       const dpr = window.devicePixelRatio || 1;
@@ -159,8 +162,7 @@ var RasterSketchPlugin = class extends import_obsidian.Plugin {
         if (!sectionInfo) return;
         const view = this.app.workspace.getActiveViewOfType(import_obsidian.MarkdownView);
         if (view) {
-          const editor = view.editor;
-          editor.replaceRange(
+          view.editor.replaceRange(
             "",
             { line: sectionInfo.lineStart, ch: 0 },
             { line: sectionInfo.lineEnd + 1, ch: 0 }
@@ -223,9 +225,7 @@ var RasterSketchPlugin = class extends import_obsidian.Plugin {
           return;
         }
         let parentPath = ((_a = activeFile.parent) == null ? void 0 : _a.path) || "";
-        if (parentPath === "/" || parentPath.trim() === "") {
-          parentPath = "";
-        }
+        if (parentPath === "/" || parentPath.trim() === "") parentPath = "";
         const sketchFolder = parentPath ? `${parentPath}/sketches` : "sketches";
         if (!(this.app.vault.getAbstractFileByPath(sketchFolder) instanceof import_obsidian.TFolder)) {
           await this.app.vault.createFolder(sketchFolder);
