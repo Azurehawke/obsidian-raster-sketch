@@ -3,8 +3,28 @@ import { Plugin, TFolder, Editor, MarkdownView, setIcon } from 'obsidian';
 type ToolMode = 'pen' | 'pencil' | 'marker' | 'eraser';
 interface CanvasState { data: ImageData; height: number; maxY: number; }
 
+interface SketchSettings {
+    color:       string;
+    tool:        ToolMode;
+    brushSize:   number;
+    paperStyle:  string;
+    canvasWidth: number;
+}
+
+const DEFAULT_SETTINGS: SketchSettings = {
+    color:       "#000000",
+    tool:        "pen",
+    brushSize:   3,
+    paperStyle:  "lines",
+    canvasWidth: 100,
+};
+
 export default class RasterSketchPlugin extends Plugin {
+    settings!: SketchSettings;
+
     async onload() {
+        this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+
         this.addCommand({
             id: 'insert-raster-sketch-block',
             name: 'Insert Raster Sketch Block',
@@ -23,6 +43,11 @@ export default class RasterSketchPlugin extends Plugin {
             toolSelect.createEl("option", { text: "Pencil", value: "pencil" });
             toolSelect.createEl("option", { text: "Marker", value: "marker" });
             toolSelect.createEl("option", { text: "Eraser", value: "eraser" });
+            toolSelect.value = this.settings.tool;
+            toolSelect.addEventListener("change", () => {
+                this.settings.tool = toolSelect.value as ToolMode;
+                this.saveData(this.settings);
+            });
 
             toolbar.createDiv({ cls: "raster-toolbar-sep" });
 
@@ -43,16 +68,29 @@ export default class RasterSketchPlugin extends Plugin {
 
             toolbar.createDiv({ cls: "raster-toolbar-sep" });
 
-            // ── Color + brush size ─────────────────────────────────────────
+            // ── Color ──────────────────────────────────────────────────────
             const colorInput = toolbar.createEl("input", { type: "color", attr: { title: "Brush color" } });
-            colorInput.value = "#000000";
+            colorInput.value = this.settings.color;
+            colorInput.addEventListener("change", () => {
+                this.settings.color = colorInput.value;
+                this.saveData(this.settings);
+            });
 
+            // ── Brush size ─────────────────────────────────────────────────
             const widthInput = toolbar.createEl("input", {
                 type: "range",
-                attr: { min: "1", max: "20", value: "3", title: "Brush size" }
+                attr: { min: "1", max: "20", value: String(this.settings.brushSize), title: "Brush size" }
             });
-            const widthLabel = toolbar.createEl("span", { cls: "raster-width-label", text: "3" });
-            widthInput.addEventListener("input", () => { widthLabel.textContent = widthInput.value; });
+            const widthLabel = toolbar.createEl("span", {
+                cls: "raster-width-label", text: String(this.settings.brushSize)
+            });
+            widthInput.addEventListener("input", () => {
+                widthLabel.textContent = widthInput.value;
+            });
+            widthInput.addEventListener("change", () => {
+                this.settings.brushSize = parseInt(widthInput.value);
+                this.saveData(this.settings);
+            });
 
             toolbar.createDiv({ cls: "raster-toolbar-sep" });
 
@@ -63,15 +101,27 @@ export default class RasterSketchPlugin extends Plugin {
             patternSelect.createEl("option", { text: "Graph",       value: "graph" });
             patternSelect.createEl("option", { text: "Engineering", value: "engineering" });
             patternSelect.createEl("option", { text: "Cornell",     value: "cornell" });
+            patternSelect.value = this.settings.paperStyle;
+            patternSelect.addEventListener("change", () => {
+                this.settings.paperStyle = patternSelect.value;
+                this.saveData(this.settings);
+                applyCanvasStylePattern();
+            });
 
             toolbar.createDiv({ cls: "raster-toolbar-sep" });
 
             // ── Canvas width ───────────────────────────────────────────────
             const canvasWidthSlider = toolbar.createEl("input", {
                 type: "range",
-                attr: { min: "25", max: "100", value: "100", step: "5", title: "Canvas width" }
+                attr: { min: "25", max: "100", value: String(this.settings.canvasWidth), step: "5", title: "Canvas width" }
             });
-            const canvasWidthLabel = toolbar.createEl("span", { cls: "raster-pct-label", text: "100%" });
+            const canvasWidthLabel = toolbar.createEl("span", {
+                cls: "raster-pct-label", text: this.settings.canvasWidth + "%"
+            });
+            canvasWidthSlider.addEventListener("change", () => {
+                this.settings.canvasWidth = parseInt(canvasWidthSlider.value);
+                this.saveData(this.settings);
+            });
 
             toolbar.createDiv({ cls: "raster-toolbar-sep" });
 
@@ -166,8 +216,9 @@ export default class RasterSketchPlugin extends Plugin {
                 applyCanvasStylePattern();
             };
 
+            // Apply saved canvas width before first render
+            container.style.width = this.settings.canvasWidth + "%";
             setTimeout(resizeCanvas, 50);
-            patternSelect.addEventListener("change", applyCanvasStylePattern);
 
             // ── Undo / Redo ────────────────────────────────────────────────
             const undoStack: CanvasState[] = [];

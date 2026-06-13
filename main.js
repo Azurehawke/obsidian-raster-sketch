@@ -3,6 +3,7 @@ var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
 var __export = (target, all) => {
   for (var name in all)
     __defProp(target, name, { get: all[name], enumerable: true });
@@ -16,6 +17,7 @@ var __copyProps = (to, from, except, desc) => {
   return to;
 };
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
 
 // main.ts
 var main_exports = {};
@@ -24,8 +26,20 @@ __export(main_exports, {
 });
 module.exports = __toCommonJS(main_exports);
 var import_obsidian = require("obsidian");
+var DEFAULT_SETTINGS = {
+  color: "#000000",
+  tool: "pen",
+  brushSize: 3,
+  paperStyle: "lines",
+  canvasWidth: 100
+};
 var RasterSketchPlugin = class extends import_obsidian.Plugin {
+  constructor() {
+    super(...arguments);
+    __publicField(this, "settings");
+  }
   async onload() {
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
     this.addCommand({
       id: "insert-raster-sketch-block",
       name: "Insert Raster Sketch Block",
@@ -41,6 +55,11 @@ var RasterSketchPlugin = class extends import_obsidian.Plugin {
       toolSelect.createEl("option", { text: "Pencil", value: "pencil" });
       toolSelect.createEl("option", { text: "Marker", value: "marker" });
       toolSelect.createEl("option", { text: "Eraser", value: "eraser" });
+      toolSelect.value = this.settings.tool;
+      toolSelect.addEventListener("change", () => {
+        this.settings.tool = toolSelect.value;
+        this.saveData(this.settings);
+      });
       toolbar.createDiv({ cls: "raster-toolbar-sep" });
       const undoBtn = toolbar.createEl("button", {
         cls: "raster-toolbar-btn",
@@ -58,14 +77,25 @@ var RasterSketchPlugin = class extends import_obsidian.Plugin {
       redoBtn.disabled = true;
       toolbar.createDiv({ cls: "raster-toolbar-sep" });
       const colorInput = toolbar.createEl("input", { type: "color", attr: { title: "Brush color" } });
-      colorInput.value = "#000000";
+      colorInput.value = this.settings.color;
+      colorInput.addEventListener("change", () => {
+        this.settings.color = colorInput.value;
+        this.saveData(this.settings);
+      });
       const widthInput = toolbar.createEl("input", {
         type: "range",
-        attr: { min: "1", max: "20", value: "3", title: "Brush size" }
+        attr: { min: "1", max: "20", value: String(this.settings.brushSize), title: "Brush size" }
       });
-      const widthLabel = toolbar.createEl("span", { cls: "raster-width-label", text: "3" });
+      const widthLabel = toolbar.createEl("span", {
+        cls: "raster-width-label",
+        text: String(this.settings.brushSize)
+      });
       widthInput.addEventListener("input", () => {
         widthLabel.textContent = widthInput.value;
+      });
+      widthInput.addEventListener("change", () => {
+        this.settings.brushSize = parseInt(widthInput.value);
+        this.saveData(this.settings);
       });
       toolbar.createDiv({ cls: "raster-toolbar-sep" });
       const patternSelect = toolbar.createEl("select", { attr: { title: "Paper style" } });
@@ -74,12 +104,25 @@ var RasterSketchPlugin = class extends import_obsidian.Plugin {
       patternSelect.createEl("option", { text: "Graph", value: "graph" });
       patternSelect.createEl("option", { text: "Engineering", value: "engineering" });
       patternSelect.createEl("option", { text: "Cornell", value: "cornell" });
+      patternSelect.value = this.settings.paperStyle;
+      patternSelect.addEventListener("change", () => {
+        this.settings.paperStyle = patternSelect.value;
+        this.saveData(this.settings);
+        applyCanvasStylePattern();
+      });
       toolbar.createDiv({ cls: "raster-toolbar-sep" });
       const canvasWidthSlider = toolbar.createEl("input", {
         type: "range",
-        attr: { min: "25", max: "100", value: "100", step: "5", title: "Canvas width" }
+        attr: { min: "25", max: "100", value: String(this.settings.canvasWidth), step: "5", title: "Canvas width" }
       });
-      const canvasWidthLabel = toolbar.createEl("span", { cls: "raster-pct-label", text: "100%" });
+      const canvasWidthLabel = toolbar.createEl("span", {
+        cls: "raster-pct-label",
+        text: this.settings.canvasWidth + "%"
+      });
+      canvasWidthSlider.addEventListener("change", () => {
+        this.settings.canvasWidth = parseInt(canvasWidthSlider.value);
+        this.saveData(this.settings);
+      });
       toolbar.createDiv({ cls: "raster-toolbar-sep" });
       const clearBtn = toolbar.createEl("button", { cls: "raster-toolbar-btn", attr: { title: "Clear canvas" } });
       (0, import_obsidian.setIcon)(clearBtn, "eraser");
@@ -159,8 +202,8 @@ var RasterSketchPlugin = class extends import_obsidian.Plugin {
         ctx2d.lineJoin = "round";
         applyCanvasStylePattern();
       };
+      container.style.width = this.settings.canvasWidth + "%";
       setTimeout(resizeCanvas, 50);
-      patternSelect.addEventListener("change", applyCanvasStylePattern);
       const undoStack = [];
       const redoStack = [];
       const MAX_HISTORY = 20;
