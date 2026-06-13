@@ -6,41 +6,70 @@
   touch-action: none;
 }
 
+/* ── Toolbar ──────────────────────────────────────────────────────────── */
 .raster-toolbar {
   display: flex;
   align-items: center;
   gap: 4px;
   padding: 0 8px;
-  height: 36px;
+  height: 38px;
   background: var(--background-secondary);
   border-bottom: 1px solid var(--background-modifier-border);
   box-sizing: border-box;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.raster-toolbar::-webkit-scrollbar { display: none; }
+
+/* ── Tool selector buttons (icon-only, toggleable) ────────────────────── */
+.raster-tool-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.1s, color 0.1s;
+}
+.raster-tool-btn:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+.raster-tool-btn--active {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-color: transparent;
+}
+.raster-tool-btn--active:hover {
+  background: var(--interactive-accent-hover);
+  color: var(--text-on-accent);
 }
 
+/* ── Color swatch ─────────────────────────────────────────────────────── */
 .raster-toolbar input[type="color"] {
   -webkit-appearance: none;
   appearance: none;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   border: 1px solid var(--background-modifier-border);
-  border-radius: 4px;
+  border-radius: 5px;
   cursor: pointer;
   background: none;
   flex-shrink: 0;
 }
+.raster-toolbar input[type="color"]::-webkit-color-swatch-wrapper { padding: 2px; }
+.raster-toolbar input[type="color"]::-webkit-color-swatch { border: none; border-radius: 3px; }
 
-.raster-toolbar input[type="color"]::-webkit-color-swatch-wrapper {
-  padding: 2px;
-}
-
-.raster-toolbar input[type="color"]::-webkit-color-swatch {
-  border: none;
-  border-radius: 2px;
-}
-
+/* ── Width slider ─────────────────────────────────────────────────────── */
 .raster-toolbar input[type="range"] {
-  width: 64px;
+  width: 60px;
   flex-shrink: 0;
   accent-color: var(--interactive-accent);
   cursor: pointer;
@@ -49,16 +78,17 @@
 .raster-width-label {
   font-size: 11px;
   color: var(--text-muted);
-  min-width: 14px;
+  min-width: 16px;
   text-align: right;
   flex-shrink: 0;
 }
 
+/* ── Paper style select ───────────────────────────────────────────────── */
 .raster-toolbar select {
   height: 26px;
   font-size: 12px;
   border: 1px solid var(--background-modifier-border);
-  border-radius: 4px;
+  border-radius: 5px;
   background: var(--background-primary);
   color: var(--text-normal);
   cursor: pointer;
@@ -66,6 +96,7 @@
   flex-shrink: 0;
 }
 
+/* ── Separator ────────────────────────────────────────────────────────── */
 .raster-toolbar-sep {
   width: 1px;
   height: 18px;
@@ -74,39 +105,36 @@
   margin: 0 2px;
 }
 
-.raster-toolbar-spacer {
-  flex: 1;
-}
+/* ── Spacer ───────────────────────────────────────────────────────────── */
+.raster-toolbar-spacer { flex: 1; }
 
+/* ── Action buttons (icon + text label) ───────────────────────────────── */
 .raster-toolbar-btn {
   display: flex;
   align-items: center;
-  justify-content: center;
-  width: 26px;
+  gap: 4px;
   height: 26px;
-  padding: 0;
+  padding: 0 7px;
   border: none;
-  border-radius: 4px;
+  border-radius: 5px;
   background: transparent;
   color: var(--text-muted);
+  font-size: 12px;
   cursor: pointer;
   flex-shrink: 0;
+  white-space: nowrap;
 }
-
 .raster-toolbar-btn:hover {
   background: var(--background-modifier-hover);
   color: var(--text-normal);
 }
-
-.raster-toolbar-btn--danger {
-  color: var(--text-faint);
-}
-
+.raster-toolbar-btn--danger { color: var(--text-faint); }
 .raster-toolbar-btn--danger:hover {
   color: var(--text-error);
   background: var(--background-modifier-hover);
 }
 
+/* ── Canvas ───────────────────────────────────────────────────────────── */
 .raster-canvas {
   display: block;
   width: 100%;

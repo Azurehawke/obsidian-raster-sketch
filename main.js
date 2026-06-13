@@ -36,9 +36,29 @@ var RasterSketchPlugin = class extends import_obsidian.Plugin {
     this.registerMarkdownCodeBlockProcessor("raster-sketch", (source, el, ctx) => {
       const container = el.createDiv({ cls: "raster-container" });
       const toolbar = container.createDiv({ cls: "raster-toolbar" });
+      let activeTool = "pen";
+      const toolBtns = {
+        pen: toolbar.createEl("button", { cls: "raster-tool-btn raster-tool-btn--active", attr: { title: "Pen" } }),
+        pencil: toolbar.createEl("button", { cls: "raster-tool-btn", attr: { title: "Pencil" } }),
+        marker: toolbar.createEl("button", { cls: "raster-tool-btn", attr: { title: "Marker" } }),
+        eraser: toolbar.createEl("button", { cls: "raster-tool-btn", attr: { title: "Eraser" } })
+      };
+      (0, import_obsidian.setIcon)(toolBtns.pen, "pen-line");
+      (0, import_obsidian.setIcon)(toolBtns.pencil, "pencil");
+      (0, import_obsidian.setIcon)(toolBtns.marker, "highlighter");
+      (0, import_obsidian.setIcon)(toolBtns.eraser, "eraser");
+      const setActiveTool = (tool) => {
+        activeTool = tool;
+        for (const [t, btn] of Object.entries(toolBtns)) {
+          btn.classList.toggle("raster-tool-btn--active", t === tool);
+        }
+      };
+      for (const [tool, btn] of Object.entries(toolBtns)) {
+        btn.addEventListener("click", () => setActiveTool(tool));
+      }
+      toolbar.createDiv({ cls: "raster-toolbar-sep" });
       const colorInput = toolbar.createEl("input", { type: "color", attr: { title: "Brush color" } });
       colorInput.value = "#000000";
-      toolbar.createDiv({ cls: "raster-toolbar-sep" });
       const widthInput = toolbar.createEl("input", {
         type: "range",
         attr: { min: "1", max: "20", value: "3", title: "Brush size" }
@@ -50,13 +70,17 @@ var RasterSketchPlugin = class extends import_obsidian.Plugin {
       toolbar.createDiv({ cls: "raster-toolbar-sep" });
       const patternSelect = toolbar.createEl("select", { attr: { title: "Paper style" } });
       patternSelect.createEl("option", { text: "Lines", value: "lines" });
-      patternSelect.createEl("option", { text: "Dots", value: "dots" });
+      patternSelect.createEl("option", { text: "Dot Grid", value: "dots" });
       patternSelect.createEl("option", { text: "Graph", value: "graph" });
+      patternSelect.createEl("option", { text: "Engineering", value: "engineering" });
+      patternSelect.createEl("option", { text: "Cornell", value: "cornell" });
       toolbar.createDiv({ cls: "raster-toolbar-sep" });
       const clearBtn = toolbar.createEl("button", { cls: "raster-toolbar-btn", attr: { title: "Clear canvas" } });
       (0, import_obsidian.setIcon)(clearBtn, "eraser");
+      clearBtn.createEl("span", { text: "Clear" });
       const saveBtn = toolbar.createEl("button", { cls: "raster-toolbar-btn", attr: { title: "Save as image" } });
       (0, import_obsidian.setIcon)(saveBtn, "image-down");
+      saveBtn.createEl("span", { text: "Save" });
       toolbar.createDiv({ cls: "raster-toolbar-spacer" });
       const deleteBlockBtn = toolbar.createEl("button", {
         cls: "raster-toolbar-btn raster-toolbar-btn--danger",
@@ -71,19 +95,52 @@ var RasterSketchPlugin = class extends import_obsidian.Plugin {
       let isSaving = false;
       const lineSpacing = 28;
       const graphSpacing = 16;
+      const engMajor = 20;
+      const engMinor = 4;
+      const cornellCue = 30;
+      const blue = "rgba(160, 200, 232, 0.55)";
+      const blueDk = "rgba(100, 155, 200, 0.75)";
       const applyCanvasStylePattern = () => {
-        canvas.style.background = "none";
+        canvas.style.backgroundImage = "none";
         canvas.style.backgroundColor = "transparent";
-        const pattern = patternSelect.value;
-        if (pattern === "lines") {
-          canvas.style.backgroundImage = `linear-gradient(var(--background-modifier-border) 1px, transparent 1px)`;
+        canvas.style.backgroundSize = "";
+        canvas.style.backgroundPosition = "";
+        const p = patternSelect.value;
+        if (p === "lines") {
+          canvas.style.backgroundImage = `linear-gradient(${blue} 1px, transparent 1px)`;
           canvas.style.backgroundSize = `100% ${lineSpacing}px`;
-        } else if (pattern === "dots") {
-          canvas.style.backgroundImage = `radial-gradient(var(--background-modifier-border) 1.5px, transparent 1.5px)`;
+        } else if (p === "dots") {
+          canvas.style.backgroundImage = `radial-gradient(${blue} 1.5px, transparent 1.5px)`;
           canvas.style.backgroundSize = `${lineSpacing}px ${lineSpacing}px`;
-        } else if (pattern === "graph") {
-          canvas.style.backgroundImage = `linear-gradient(var(--background-modifier-border) 1px, transparent 1px), linear-gradient(90deg, var(--background-modifier-border) 1px, transparent 1px)`;
+        } else if (p === "graph") {
+          canvas.style.backgroundImage = [
+            `linear-gradient(${blue} 1px, transparent 1px)`,
+            `linear-gradient(90deg, ${blue} 1px, transparent 1px)`
+          ].join(", ");
           canvas.style.backgroundSize = `${graphSpacing}px ${graphSpacing}px`;
+        } else if (p === "engineering") {
+          canvas.style.backgroundImage = [
+            `linear-gradient(${blueDk} 1px, transparent 1px)`,
+            `linear-gradient(90deg, ${blueDk} 1px, transparent 1px)`,
+            `linear-gradient(${blue} 1px, transparent 1px)`,
+            `linear-gradient(90deg, ${blue} 1px, transparent 1px)`
+          ].join(", ");
+          canvas.style.backgroundSize = [
+            `${engMajor}px ${engMajor}px`,
+            `${engMajor}px ${engMajor}px`,
+            `${engMinor}px ${engMinor}px`,
+            `${engMinor}px ${engMinor}px`
+          ].join(", ");
+        } else if (p === "cornell") {
+          canvas.style.backgroundImage = [
+            `linear-gradient(${blue} 1px, transparent 1px)`,
+            `linear-gradient(90deg,
+                            transparent calc(${cornellCue}% - 0.5px),
+                            ${blueDk} calc(${cornellCue}% - 0.5px),
+                            ${blueDk} calc(${cornellCue}% + 0.5px),
+                            transparent calc(${cornellCue}% + 0.5px))`
+          ].join(", ");
+          canvas.style.backgroundSize = `100% ${lineSpacing}px, 100% 100%`;
         }
       };
       const resizeCanvas = () => {
@@ -102,57 +159,69 @@ var RasterSketchPlugin = class extends import_obsidian.Plugin {
         const r = canvas.getBoundingClientRect();
         return { x: e.clientX - r.left, y: e.clientY - r.top };
       };
-      canvas.addEventListener("pointerdown", (e) => {
-        if (isSaving) return;
-        drawing = true;
-        ctx2d.beginPath();
-        const pos = getPos(e);
-        ctx2d.moveTo(pos.x, pos.y);
-        if (e.buttons === 32 || e.buttons === 2) {
+      const applyTool = (tool) => {
+        const w = parseInt(widthInput.value);
+        if (tool === "eraser") {
           ctx2d.globalCompositeOperation = "destination-out";
+          ctx2d.globalAlpha = 1;
           ctx2d.lineWidth = 20;
         } else {
           ctx2d.globalCompositeOperation = "source-over";
           ctx2d.strokeStyle = colorInput.value;
-          ctx2d.lineWidth = parseInt(widthInput.value);
-          if (pos.y > maxDrawnY) maxDrawnY = pos.y;
+          if (tool === "pen") {
+            ctx2d.globalAlpha = 1;
+            ctx2d.lineWidth = w;
+          } else if (tool === "pencil") {
+            ctx2d.globalAlpha = 0.65;
+            ctx2d.lineWidth = Math.max(1, w * 0.8);
+          } else if (tool === "marker") {
+            ctx2d.globalAlpha = 0.35;
+            ctx2d.lineWidth = w * 3;
+          }
         }
+      };
+      const resolvedTool = (e) => e.buttons === 32 || e.buttons === 2 ? "eraser" : activeTool;
+      canvas.addEventListener("pointerdown", (e) => {
+        if (isSaving) return;
+        drawing = true;
+        const tool = resolvedTool(e);
+        const pos = getPos(e);
+        ctx2d.beginPath();
+        ctx2d.moveTo(pos.x, pos.y);
+        applyTool(tool);
+        if (tool !== "eraser" && pos.y > maxDrawnY) maxDrawnY = pos.y;
       });
       canvas.addEventListener("pointermove", (e) => {
         var _a;
         if (!drawing || isSaving) return;
+        const tool = resolvedTool(e);
         const pos = getPos(e);
-        if (e.buttons === 32 || e.buttons === 2) {
-          ctx2d.globalCompositeOperation = "destination-out";
-          ctx2d.lineWidth = 20;
-        } else {
-          ctx2d.globalCompositeOperation = "source-over";
-          ctx2d.strokeStyle = colorInput.value;
-          ctx2d.lineWidth = parseInt(widthInput.value);
-          if (pos.y > maxDrawnY) maxDrawnY = pos.y;
-        }
+        applyTool(tool);
         ctx2d.lineTo(pos.x, pos.y);
         ctx2d.stroke();
-        if (pos.y > canvas.height / dpr - 20 && ctx2d.globalCompositeOperation === "source-over") {
-          const oldWidth = canvas.width;
-          const oldHeight = canvas.height;
-          const tempCanvas = document.createElement("canvas");
-          tempCanvas.width = oldWidth;
-          tempCanvas.height = oldHeight;
-          (_a = tempCanvas.getContext("2d")) == null ? void 0 : _a.drawImage(canvas, 0, 0);
-          canvas.height = oldHeight + 100 * dpr;
+        if (tool !== "eraser" && pos.y > maxDrawnY) maxDrawnY = pos.y;
+        if (pos.y > canvas.height / dpr - 20 && tool !== "eraser") {
+          const ow = canvas.width, oh = canvas.height;
+          const tmp = document.createElement("canvas");
+          tmp.width = ow;
+          tmp.height = oh;
+          (_a = tmp.getContext("2d")) == null ? void 0 : _a.drawImage(canvas, 0, 0);
+          canvas.height = oh + 100 * dpr;
           ctx2d.scale(dpr, dpr);
           ctx2d.lineCap = "round";
           ctx2d.lineJoin = "round";
-          ctx2d.drawImage(tempCanvas, 0, 0, oldWidth / dpr, oldHeight / dpr);
+          ctx2d.drawImage(tmp, 0, 0, ow / dpr, oh / dpr);
         }
       });
       const stopDrawing = () => {
         drawing = false;
+        ctx2d.globalAlpha = 1;
       };
       canvas.addEventListener("pointerup", stopDrawing);
       canvas.addEventListener("pointerleave", stopDrawing);
       clearBtn.onclick = () => {
+        ctx2d.globalAlpha = 1;
+        ctx2d.globalCompositeOperation = "source-over";
         ctx2d.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
         maxDrawnY = 0;
       };
@@ -170,74 +239,120 @@ var RasterSketchPlugin = class extends import_obsidian.Plugin {
         }
       };
       saveBtn.onclick = async (e) => {
-        var _a, _b;
+        var _a, _b, _c, _d;
         e.preventDefault();
         if (isSaving) return;
         isSaving = true;
         drawing = false;
-        const currentWidth = canvas.width / dpr;
+        ctx2d.globalAlpha = 1;
+        const cw = canvas.width / dpr;
         const pattern = patternSelect.value;
-        const trackingSpacing = pattern === "graph" ? graphSpacing : lineSpacing;
-        const boundingGridLines = Math.max(1, Math.ceil(maxDrawnY / trackingSpacing));
-        const croppedHeight = boundingGridLines * trackingSpacing;
-        const exportCanvas = document.createElement("canvas");
-        exportCanvas.width = currentWidth * dpr;
-        exportCanvas.height = croppedHeight * dpr;
-        const exportCtx = exportCanvas.getContext("2d");
-        exportCtx.scale(dpr, dpr);
-        exportCtx.strokeStyle = "#e0f7fa";
-        exportCtx.lineWidth = 1;
+        const trackingSpacing = pattern === "graph" ? graphSpacing : pattern === "engineering" ? engMajor : lineSpacing;
+        const croppedHeight = Math.max(1, Math.ceil(maxDrawnY / trackingSpacing)) * trackingSpacing;
+        const exp = document.createElement("canvas");
+        exp.width = cw * dpr;
+        exp.height = croppedHeight * dpr;
+        const expCtx = exp.getContext("2d");
+        expCtx.scale(dpr, dpr);
+        const lc = "#b8d4e8";
+        const lcs = "#88aec8";
+        expCtx.lineWidth = 1;
         if (pattern === "lines") {
+          expCtx.strokeStyle = lc;
           for (let y = lineSpacing; y <= croppedHeight; y += lineSpacing) {
-            exportCtx.beginPath();
-            exportCtx.moveTo(0, y);
-            exportCtx.lineTo(currentWidth, y);
-            exportCtx.stroke();
+            expCtx.beginPath();
+            expCtx.moveTo(0, y);
+            expCtx.lineTo(cw, y);
+            expCtx.stroke();
           }
         } else if (pattern === "dots") {
-          exportCtx.fillStyle = "#b2ebf2";
-          for (let x = lineSpacing; x < currentWidth; x += lineSpacing) {
+          expCtx.fillStyle = lc;
+          for (let x = lineSpacing; x < cw; x += lineSpacing)
             for (let y = lineSpacing; y < croppedHeight; y += lineSpacing) {
-              exportCtx.beginPath();
-              exportCtx.arc(x, y, 1.5, 0, Math.PI * 2);
-              exportCtx.fill();
+              expCtx.beginPath();
+              expCtx.arc(x, y, 1.5, 0, Math.PI * 2);
+              expCtx.fill();
             }
-          }
         } else if (pattern === "graph") {
-          for (let x = graphSpacing; x < currentWidth; x += graphSpacing) {
-            exportCtx.beginPath();
-            exportCtx.moveTo(x, 0);
-            exportCtx.lineTo(x, croppedHeight);
-            exportCtx.stroke();
+          expCtx.strokeStyle = lc;
+          for (let x = graphSpacing; x < cw; x += graphSpacing) {
+            expCtx.beginPath();
+            expCtx.moveTo(x, 0);
+            expCtx.lineTo(x, croppedHeight);
+            expCtx.stroke();
           }
           for (let y = graphSpacing; y <= croppedHeight; y += graphSpacing) {
-            exportCtx.beginPath();
-            exportCtx.moveTo(0, y);
-            exportCtx.lineTo(currentWidth, y);
-            exportCtx.stroke();
+            expCtx.beginPath();
+            expCtx.moveTo(0, y);
+            expCtx.lineTo(cw, y);
+            expCtx.stroke();
           }
+        } else if (pattern === "engineering") {
+          expCtx.strokeStyle = lc;
+          for (let x = engMinor; x < cw; x += engMinor) {
+            expCtx.beginPath();
+            expCtx.moveTo(x, 0);
+            expCtx.lineTo(x, croppedHeight);
+            expCtx.stroke();
+          }
+          for (let y = engMinor; y <= croppedHeight; y += engMinor) {
+            expCtx.beginPath();
+            expCtx.moveTo(0, y);
+            expCtx.lineTo(cw, y);
+            expCtx.stroke();
+          }
+          expCtx.strokeStyle = lcs;
+          for (let x = engMajor; x < cw; x += engMajor) {
+            expCtx.beginPath();
+            expCtx.moveTo(x, 0);
+            expCtx.lineTo(x, croppedHeight);
+            expCtx.stroke();
+          }
+          for (let y = engMajor; y <= croppedHeight; y += engMajor) {
+            expCtx.beginPath();
+            expCtx.moveTo(0, y);
+            expCtx.lineTo(cw, y);
+            expCtx.stroke();
+          }
+        } else if (pattern === "cornell") {
+          expCtx.strokeStyle = lc;
+          for (let y = lineSpacing; y <= croppedHeight; y += lineSpacing) {
+            expCtx.beginPath();
+            expCtx.moveTo(0, y);
+            expCtx.lineTo(cw, y);
+            expCtx.stroke();
+          }
+          expCtx.strokeStyle = lcs;
+          const cueX = cw * (cornellCue / 100);
+          expCtx.beginPath();
+          expCtx.moveTo(cueX, 0);
+          expCtx.lineTo(cueX, croppedHeight);
+          expCtx.stroke();
         }
-        exportCtx.drawImage(canvas, 0, 0, currentWidth, canvas.height / dpr);
-        const data = exportCanvas.toDataURL("image/png").split(",")[1];
+        expCtx.drawImage(canvas, 0, 0, cw, canvas.height / dpr);
+        const data = exp.toDataURL("image/png").split(",")[1];
         const activeFile = this.app.workspace.getActiveFile();
         if (!activeFile) {
           isSaving = false;
           return;
         }
-        let parentPath = ((_a = activeFile.parent) == null ? void 0 : _a.path) || "";
+        let parentPath = (_b = (_a = activeFile.parent) == null ? void 0 : _a.path) != null ? _b : "";
         if (parentPath === "/" || parentPath.trim() === "") parentPath = "";
         const sketchFolder = parentPath ? `${parentPath}/sketches` : "sketches";
         if (!(this.app.vault.getAbstractFileByPath(sketchFolder) instanceof import_obsidian.TFolder)) {
           await this.app.vault.createFolder(sketchFolder);
         }
         const fileName = `${sketchFolder}/sketch-${Date.now()}.png`;
-        await this.app.vault.createBinary(fileName, Uint8Array.from(atob(data), (c) => c.charCodeAt(0)).buffer);
-        const editor = (_b = this.app.workspace.activeEditor) == null ? void 0 : _b.editor;
-        if (editor) {
-          editor.replaceRange(`
+        await this.app.vault.createBinary(
+          fileName,
+          Uint8Array.from(atob(data), (c) => c.charCodeAt(0)).buffer
+        );
+        (_d = (_c = this.app.workspace.activeEditor) == null ? void 0 : _c.editor) == null ? void 0 : _d.replaceRange(
+          `
 ![[${fileName}]]
-`, editor.getCursor());
-        }
+`,
+          this.app.workspace.activeEditor.editor.getCursor()
+        );
         setTimeout(() => {
           container.remove();
         }, 50);
